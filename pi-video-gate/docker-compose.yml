@@ -1,0 +1,19 @@
+# - network_mode: host so config.json's `immichBaseUrl: http://localhost:2283`
+#   keeps resolving to Immich's own published port on the same host, with
+#   no docker-network/DNS rework needed.
+# - /home/pi:/home/pi (rw) so config.json (has the Immich API key),
+#   confirmed.json, webcam-enabled.json/webcam-state.json, webcam-cache/,
+#   and tmp/ all persist across container recreates - nothing here is
+#   baked into the image.
+# - libraryDir in config.json (/home/pi/immich-app/library) resolves the
+#   same way, since the whole /home/pi tree is mounted.
+services:
+  pi-video-gate:
+    build: .
+    container_name: pi-video-gate
+    network_mode: host
+    restart: unless-stopped
+    volumes:
+      - /home/pi:/home/pi
+    working_dir: /home/pi/pi-video-gate
+    command: node server.js

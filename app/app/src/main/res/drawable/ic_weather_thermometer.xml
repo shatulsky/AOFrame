@@ -1,0 +1,23 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="128dp"
+    android:height="128dp"
+    android:viewportWidth="128"
+    android:viewportHeight="128">
+    <group>
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M61 53c0-1.66 1.34-3 3-3h0c1.66 0 3 1.34 3 3v23c0 1.66-1.34 3-3 3h0c-1.66 0-3-1.34-3-3z"/>
+        <path
+            android:strokeColor="#FFFFFF"
+            android:strokeWidth="2"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round"
+            android:pathData="M51 83.19C51 81.14 51.5 79.11 52.46 77.29 53.43 75.46 54.84 73.88 56.57 72.69 56.84 72.5 57 72.19 57 71.86V38.78C57 36.99 57.73 35.27 59.04 34 60.35 32.72 62.13 32 64 32 65.87 32 67.65 32.72 68.96 34 70.27 35.27 71 36.99 71 38.78V41.55H65C64.45 41.55 64 41.99 64 42.55 64 43.1 64.45 43.55 65 43.55H71V49.33H65C64.45 49.33 64 49.77 64 50.33 64 50.88 64.45 51.33 65 51.33H71V57.1H65C64.45 57.1 64 57.55 64 58.1 64 58.66 64.45 59.1 65 59.1H71V71.84C71 72.17 71.16 72.48 71.43 72.66 73.16 73.86 74.57 75.44 75.54 77.27 76.51 79.1 77.01 81.13 77 83.19V83.19C77 90.26 71.21 96 64 96 56.79 96 51 90.26 51 83.19V83.19Z"/>
+    </group>
+    <!-- Mercury reservoir - a <circle cx="64" cy="83" r="9"
+         fill="currentColor"/> in the source SVG; added by hand, see
+         clear_day.xml's comment (svg2vectordrawable drops circles). -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M55,83 A9,9 0 1,0 73,83 A9,9 0 1,0 55,83"/>
+</vector>

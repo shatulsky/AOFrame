@@ -1,0 +1,13 @@
+{
+  "name": "pi-video-gate",
+  "version": "1.0.0",
+  "description": "Sidecar service gating the frame's video fetches on real transcode completion, and normalizing uploads to 30fps outside Immich.",
+  "private": true,
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2"
+  }
+}

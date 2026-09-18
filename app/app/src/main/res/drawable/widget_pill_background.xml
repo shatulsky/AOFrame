@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A "dark pill" look shared across the clock/weather/countdown widgets,
+     so they aren't just plain shadowed text over the photo. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <solid android:color="#80000000" />
+    <!-- 0dp - fully sharp/square corners, no rounding at all; smaller
+         radii like 8dp/12dp still read as visibly rounded. -->
+    <corners android:radius="0dp" />
+</shape>

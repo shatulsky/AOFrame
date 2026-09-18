@@ -1,0 +1,12 @@
+{
+  "port": 8090,
+  "immichBaseUrl": "http://localhost:2283",
+  "libraryDir": "/home/pi/immich-app/library",
+  "apiKey": "<immich api key with admin scope - create one via Immich's web UI, Account Settings -> API Keys>",
+  "frameControlUrl": "<optional - http://<your-frame-ip>:8099, enables skipping webcam capture during the frame's night-mode window>",
+  "deployHost": "<used only by deploy.sh - e.g. pi@192.168.1.50>",
+  "deploySshKey": "<optional - used only by deploy.sh, path to an SSH private key; omit to use your default SSH key/agent>",
+  "webcams": [
+    { "id": "<short-filesystem-safe-id, e.g. harbor-cam>", "streamUrl": "<direct .m3u8 URL>", "label": "<human-readable name>" }
+  ]
+}

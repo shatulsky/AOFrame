@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Cold-start loading indicator, from a source loading.svg. Hand-converted,
+     not run through svg2vectordrawable as-is: the source SVG has no viewBox (only
+     width="512" height="512") and positions each of its 9 blobs via its
+     own transform="translate(x,y)" - the converter defaulted the
+     viewport to a wrong 24x24 and silently dropped every transform
+     (same category of bug as the weather icons' dropped <circle>
+     elements), which would have rendered all 9 shapes stacked on top of
+     each other near the origin and mostly clipped outside a 24-unit
+     viewport. Fixed here by setting viewportWidth/Height to the source's
+     real 512x512 and wrapping each path in a <group> with the exact
+     translateX/Y from its original transform, instead of trying to bake
+     the offset into each path's coordinates by hand. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="200dp"
+    android:height="200dp"
+    android:viewportWidth="512"
+    android:viewportHeight="512">
+
+    <group android:translateX="309" android:translateY="11">
+        <path
+            android:fillColor="#4E5961"
+            android:pathData="M0 0C13.2 9.66 21.39 23.58 25.61 39.25 28.32 58.17 25.13 75.82 14.19 91.62 4.75 104.13-9.13 113.27-24.55 116.56-43.76 119-61.01 116.23-77.03 104.85-90.11 94.67-99.11 80.5-102 64-103.65 43.87-100.39 25.74-87.07 10.03-64.53-15-27.62-18.02 0 0Z"/>
+    </group>
+
+    <group android:translateX="156" android:translateY="69">
+        <path
+            android:fillColor="#5E6B74"
+            android:pathData="M0 0C3.62 2.76 6.83 5.74 10 9 10.56 9.54 11.12 10.08 11.7 10.64 21.29 20.63 25.81 35.37 26.38 48.94 25.66 67.2 18.47 81.97 5.5 94.63-7.81 105.66-24.95 110.34-42 109-58.35 106.98-73.76 99.23-84.25 86.31-94.84 70.95-98.71 54.15-95.61 35.7-92.03 20.45-82.61 7.93-69.75-0.75-47.53-14.21-21.95-13.18 0 0Z"/>
+    </group>
+
+    <group android:translateX="92" android:translateY="205">
+        <path
+            android:fillColor="#7D8B96"
+            android:pathData="M0 0C12.41 9.5 20.64 21.65 24 37 25.37 53.18 23.41 68.6 12.93 81.56 10.69 84.12 8.38 86.58 6 89 5.15 89.87 5.15 89.87 4.29 90.75-7.48 101.77-23.12 104.75-38.66 104.28-53.18 103.52-66.61 97.1-77 87-89.82 72.73-92.83 58.05-92.17 39.56-91.25 25.99-83.59 13.46-73.85 4.32-52.97-12.69-22.65-15.73 0 0Z"/>
+    </group>
+
+    <group android:translateX="135.168" android:translateY="343.449">
+        <path
+            android:fillColor="#909BA6"
+            android:pathData="M0 0C11.33 9.6 18.84 21.7 20.83 36.55 22.08 53.98 17.96 68.28 6.64 81.74-2.49 91.5-15.11 98.23-28.57 98.79-47.14 99.19-61.08 94.93-74.84 82.03-86.04 70.08-89.63 55.84-89.38 39.91-88.85 24.79-81.82 12.93-71.17 2.55-51.92-15.34-20.59-16.45 0 0Z"/>
+    </group>
+
+    <group android:translateX="255.605" android:translateY="418.223">
+        <path
+            android:fillColor="#A2ABB7"
+            android:pathData="M0 0C0.79 0.59 1.58 1.17 2.39 1.78 3.05 2.25 3.71 2.72 4.38 3.21 14.65 11.25 19.99 22.94 21.77 35.59 23.41 49.58 20.23 62.84 11.58 74.09 2.41 84.78-8.87 92.39-23.17 94.08-25.76 94.21-28.32 94.25-30.92 94.21-31.83 94.21-32.75 94.2-33.69 94.19-47.96 93.84-59.5 88.73-69.92 78.96-80.02 68.22-85.01 54.4-84.82 39.77-83.8 25.38-77.23 12.43-66.61 2.78-47.17-12.22-20.45-14.16 0 0Z"/>
+    </group>
+
+    <group android:translateX="387.188" android:translateY="398.688">
+        <path
+            android:fillColor="#B9C3CD"
+            android:pathData="M0 0C11.33 7.3 19.41 17.95 22.45 31.21 25 45.92 22.17 59.45 13.77 71.78 6.33 81.4-5.63 89.07-17.79 91.1-32.62 92.41-46.68 90.53-58.79 81.34-69.11 72.51-77.03 61.2-78.19 47.31-79.13 32.9-75.09 20.29-65.94 9.06-48.8-9.28-21.46-11.76 0 0Z"/>
+    </group>
+
+    <group android:translateX="484.313" android:translateY="309.375">
+        <path
+            android:fillColor="#C8D2DC"
+            android:pathData="M0 0C10.21 9.97 15.79 22.07 16.06 36.31 16.02 49.54 11.55 61.02 2.66 70.88-8.21 81.27-20.96 85.19-35.69 84.94-48.44 83.84-59.76 78.09-68.5 68.82-77.15 58.35-80.54 47.14-80.31 33.63-78.66 19.76-73.59 9.11-63.31-0.38-43.97-15.2-19.38-14.86 0 0Z"/>
+    </group>
+
+    <group android:translateX="490.414" android:translateY="184.355">
+        <path
+            android:fillColor="#DCE6EB"
+            android:pathData="M0 0C8.43 5.26 14.46 11.58 18.59 20.64 18.85 21.21 19.11 21.78 19.38 22.37 21.66 27.77 22.09 32.63 22.02 38.46 22.02 39.34 22.01 40.22 22 41.13 21.64 54.77 16.04 63.61 6.34 72.89-5.1 82.72-18.01 83.73-32.41 82.64-44.29 80.49-54.48 73.46-61.41 63.64-68.14 52.44-70.14 41.17-67.8 28.24-64.64 16.52-57.57 6.37-47 0.25-32.12-7.53-14.8-8.31 0 0Z"/>
+    </group>
+
+    <group android:translateX="432.25" android:translateY="82.75">
+        <path
+            android:fillColor="#E9EDF1"
+            android:pathData="M0 0C9.06 7.39 14.73 15.7 16.49 27.33 17.45 38.22 15.21 48.16 8.7 57.05 0.64 66.44-7.79 71.21-20.16 72.57-31.02 73-41.03 70.24-49.32 63.1-57.28 55.47-62.23 47.42-63.25 36.25-63.39 23.5-59.81 13.26-51.25 3.75-37.58-9.59-15.41-10.76 0 0Z"/>
+    </group>
+
+</vector>

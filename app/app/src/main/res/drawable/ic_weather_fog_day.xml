@@ -1,0 +1,35 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="128dp"
+    android:height="128dp"
+    android:viewportWidth="128"
+    android:viewportHeight="128">
+    <group>
+        <clip-path
+            android:pathData="M0 0h128v75H0z"/>
+        <group>
+            <path
+                android:fillColor="#FFFFFF"
+                android:fillType="evenOdd"
+                android:pathData="M64 40C64.74 40 65.33 40.6 65.33 41.33V49.33C65.33 50.07 64.74 50.67 64 50.67 63.26 50.67 62.67 50.07 62.67 49.33V41.33C62.67 40.6 63.26 40 64 40ZM41.37 49.37C41.89 48.85 42.74 48.85 43.26 49.37L48.92 55.03C49.44 55.55 49.44 56.39 48.92 56.91 48.39 57.44 47.55 57.44 47.03 56.91L41.37 51.26C40.85 50.74 40.85 49.89 41.37 49.37ZM86.63 49.37C87.15 49.89 87.15 50.74 86.63 51.26L80.97 56.91C80.45 57.44 79.61 57.44 79.08 56.91 78.56 56.39 78.56 55.55 79.08 55.03L84.74 49.37C85.26 48.85 86.11 48.85 86.63 49.37ZM32 72C32 71.26 32.6 70.67 33.33 70.67H41.33C42.07 70.67 42.67 71.26 42.67 72 42.67 72.74 42.07 73.33 41.33 73.33H33.33C32.6 73.33 32 72.74 32 72ZM85.33 72C85.33 71.26 85.93 70.67 86.67 70.67H94.67C95.4 70.67 96 71.26 96 72 96 72.74 95.4 73.33 94.67 73.33H86.67C85.93 73.33 85.33 72.74 85.33 72ZM48.92 87.08C49.44 87.61 49.44 88.45 48.92 88.97L43.26 94.63C42.74 95.15 41.89 95.15 41.37 94.63 40.85 94.11 40.85 93.26 41.37 92.74L47.03 87.08C47.55 86.56 48.39 86.56 48.92 87.08ZM79.08 87.08C79.61 86.56 80.45 86.56 80.97 87.08L86.63 92.74C87.15 93.26 87.15 94.11 86.63 94.63 86.11 95.15 85.26 95.15 84.74 94.63L79.08 88.97C78.56 88.45 78.56 87.61 79.08 87.08ZM64 93.33C64.74 93.33 65.33 93.93 65.33 94.67V102.67C65.33 103.4 64.74 104 64 104 63.26 104 62.67 103.4 62.67 102.67V94.67C62.67 93.93 63.26 93.33 64 93.33Z"/>
+        </group>
+    </group>
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="3"
+        android:strokeLineCap="round"
+        android:strokeMiterLimit="10"
+        android:pathData="M40 81H88"/>
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="3"
+        android:strokeLineCap="round"
+        android:strokeMiterLimit="10"
+        android:pathData="M40 89H88"/>
+    <!-- Sun core - a <circle cx="64" cy="72" r="11.5" stroke-width="3"/>
+         in the source SVG; added by hand, see clear_day.xml's comment. -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="3"
+        android:pathData="M52.5,72 A11.5,11.5 0 1,0 75.5,72 A11.5,11.5 0 1,0 52.5,72"/>
+</vector>

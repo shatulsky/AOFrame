@@ -1,0 +1,110 @@
+#!/usr/bin/env bash
+# Pre-commit safety net for this public repo. Blocks a commit that would
+# introduce: (1) a file that should always stay gitignored (real secrets/
+# config, never its *.example.json template), (2) a private LAN IP
+# address, (3) an absolute path to someone's home directory (a stray
+# personal username/machine path), or (4) a JSON secret-shaped field
+# assigned a real (non-placeholder) value. gitleaks runs as an optional
+# second layer on top if it's installed - not required, since demanding a
+# global tool install isn't reasonable to enforce on every contributor,
+# but it catches secret shapes (AWS keys, private key blocks, etc.) these
+# deliberately narrow patterns don't.
+#
+# Not wired up via .git/hooks directly - that directory isn't cloned with
+# the repo. Enable this once per clone with:
+#   git config core.hooksPath .githooks
+set -euo pipefail
+
+STAGED_FILES="$(git diff --cached --name-only --diff-filter=ACMR)"
+if [ -z "$STAGED_FILES" ]; then
+	exit 0
+fi
+
+violations=0
+
+# --- 1. Filenames that should never be committed, regardless of content ---
+# (belt-and-suspenders on top of .gitignore - catches a `git add -f` mistake,
+# or a new file matching one of these names that a future .gitignore entry
+# hasn't been added for yet).
+BLOCKED_BASENAMES="immich-secrets.json config.json telegram.json webcam-enabled.json webcam-state.json confirmed.json"
+while IFS= read -r file; do
+	base="$(basename "$file")"
+	for blocked in $BLOCKED_BASENAMES; do
+		if [ "$base" = "$blocked" ]; then
+			echo "BLOCKED: $file - this filename should always stay gitignored (real runtime config/state, not a template)." >&2
+			violations=1
+		fi
+	done
+done <<< "$STAGED_FILES"
+
+# --- 2-4. Content checks, per staged file's staged (not working-tree) content ---
+# `--numstat` prints "-\t-\t<path>" for anything git considers binary -
+# skip those entirely rather than pulling binary bytes through a bash
+# command substitution (noisy embedded-NUL warnings, and nothing text-ish
+# to match against anyway).
+BINARY_FILES="$(git diff --cached --numstat -- | awk -F'\t' '$1 == "-" { print $3 }')"
+while IFS= read -r file; do
+	[ -f "$file" ] || continue
+	if echo "$BINARY_FILES" | grep -qxF "$file"; then
+		continue
+	fi
+
+	content="$(git show ":$file" 2>/dev/null || true)"
+	[ -z "$content" ] && continue
+
+	# Private LAN IP ranges (RFC 1918) - EXCLUDING 192.168.0.x/192.168.1.x,
+	# the two ranges every router/home-server doc on earth uses as its
+	# generic instructional example (already used that way elsewhere in
+	# this repo, e.g. pi-video-gate's own config.example.json). Anything
+	# else in these ranges (a different 192.168.x subnet, or 10.x/172.16-31.x)
+	# is much more likely to be someone's real captured LAN address than a
+	# textbook example - legitimate placeholder text in this repo uses tags
+	# like <your-frame-ip> instead of a literal IP either way.
+	matches="$(echo "$content" | grep -InE '\b(10\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}|172\.(1[6-9]|2[0-9]|3[0-1])\.[0-9]{1,3}\.[0-9]{1,3}|192\.168\.[0-9]{1,3}\.[0-9]{1,3})\b' | grep -vE '192\.168\.[01]\.[0-9]{1,3}' || true)"
+	if [ -n "$matches" ]; then
+		echo "BLOCKED: $file - contains a private LAN IP address outside the common 192.168.0.x/192.168.1.x example ranges. Use a <placeholder> instead." >&2
+		echo "$matches" | sed 's/^/    /' >&2
+		violations=1
+	fi
+
+	# Absolute paths into a personal home directory - a stray dev-machine
+	# path (Windows or Unix) is a sign a comment/example was copied
+	# straight from a real local run instead of being genericized. Excludes
+	# generic default usernames (Pi's own "pi", cloud images' "ubuntu",
+	# Windows' "Public"/"Default") that reveal nothing personal.
+	matches="$(echo "$content" | grep -InE '[A-Za-z]:[\\/][Uu]sers[\\/][^\\/"'"'"']+|/home/[a-zA-Z0-9_.-]+/|/Users/[a-zA-Z0-9_.-]+/' | grep -viE '[\\/](pi|ubuntu|public|default|default user|all users)[\\/]' || true)"
+	if [ -n "$matches" ]; then
+		echo "BLOCKED: $file - contains an absolute path into a personal home directory." >&2
+		echo "$matches" | sed 's/^/    /' >&2
+		violations=1
+	fi
+
+	# JSON secret-shaped fields assigned a real value - i.e. not our
+	# established placeholder convention (a value starting with `<`) and
+	# not blank/zero. Case-insensitive key match covers apiKey, api_key,
+	# accessToken, sshKey, etc.
+	matches="$(echo "$content" | grep -IinE '"[A-Za-z_]*(api[_-]?key|secret|password|token|ssh[_-]?key)[A-Za-z_]*"[[:space:]]*:[[:space:]]*"[^"<][^"]{3,}"' || true)"
+	if [ -n "$matches" ]; then
+		echo "BLOCKED: $file - a secret-shaped JSON field has a real (non-placeholder) value." >&2
+		echo "$matches" | sed 's/^/    /' >&2
+		violations=1
+	fi
+done <<< "$STAGED_FILES"
+
+# --- Optional second layer: gitleaks, if installed ---
+if command -v gitleaks >/dev/null 2>&1; then
+	if ! gitleaks protect --staged --redact -v; then
+		echo "BLOCKED: gitleaks found a likely secret in the staged changes (see above)." >&2
+		violations=1
+	fi
+else
+	echo "NOTE: gitleaks not installed - skipping that layer (see https://github.com/gitleaks/gitleaks). The pattern checks above still ran." >&2
+fi
+
+if [ "$violations" -ne 0 ]; then
+	echo "" >&2
+	echo "Commit blocked - fix the above, or if you're certain this is a false positive, re-run with 'git commit --no-verify'." >&2
+	exit 1
+fi
+
+exit 0

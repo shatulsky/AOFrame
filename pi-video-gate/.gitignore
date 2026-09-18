@@ -1,0 +1,13 @@
+node_modules/
+
+# Real runtime config (Immich API key, frame control URL, webcam stream
+# URLs) - never committed. Copy config.example.json to config.json and
+# fill in your own values.
+/config.json
+
+# Runtime state/cache - regenerated on first run, not useful to diff/restore.
+/tmp/
+/confirmed.json
+/webcam-cache/
+/webcam-state.json
+/webcam-enabled.json

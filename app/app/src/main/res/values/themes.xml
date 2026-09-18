@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- windowBackground=null - an overdraw audit found this redundant.
+         The GPU-overdraw debug overlay itself may not be functional on
+         some `ro.build.type=user` devices, so check by reading the view
+         hierarchy directly if that's the case for yours. The framework
+         default windowBackground is an opaque
+         full-screen paint the system draws before the Activity's own
+         content even starts - on this kiosk, activity_main.xml's own
+         views (loadingOverlay at cold start, then photoView/
+         photoBackdropView/a PlayerView the rest of the time) always
+         cover 100% of the screen once inflated, so that default paint
+         pass never contributes anything visible. Safe specifically
+         because loadingOverlay - itself opaque, covering the whole
+         screen - is the very first thing drawn (no explicit
+         android:visibility in its XML, so it's VISIBLE at inflate,
+         before MainActivity ever hides it) - there's no frame where
+         nothing else is covering this gap. -->
+    <style name="Theme.AOFrame" parent="android:Theme.Material.NoActionBar.Fullscreen">
+        <item name="android:windowBackground">@null</item>
+    </style>
+</resources>

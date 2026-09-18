@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- allowBackup=false, deliberately - a real bug found on a real
+         device, not theoretical: with backup left at its template
+         default (true, no exclusion rules), Android's
+         auto-backup silently restored a stale snapshot of filesDir
+         (countdown.json rolled back to an earlier test value) after an
+         `adb install -r`, undoing a config change that had genuinely
+         already been saved. This is a single always-on kiosk appliance
+         with no other device to restore onto and no reason any of its
+         local state (immich-secrets.json, night-mode.json,
+         countdown.json, the asset cache) should ever be backed up or
+         restored - disabling backup entirely is simpler and more
+         correct than trying to enumerate exclusion rules. -->
+    <application
+        android:allowBackup="false"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:largeHeap="false"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.AOFrame">
+        <!-- launchMode=singleTask - confirmed the hard
+             way that plain `am force-stop` + `am start` (an admin
+             panel's restart action, also used to test
+             restoreFromPiIfMissing()) races the system's own automatic
+             HOME-category relaunch (which fires immediately once the
+             process dies with no foreground activity - a separate,
+             more basic platform behavior than the boot-time
+             set-home-activity durability question above): logcat showed
+             one launch `from uid 0` (the system's own relaunch) and a
+             second `from uid 2000` (the explicit `am start`) landing
+             ~300ms apart, standard launchMode's default (a new Activity
+             instance per launch) let both create a *second* MainActivity
+             instance in the same process before the first was cleaned
+             up - not just a cosmetic duplicate LocalControlServer port
+             bind (logged, gracefully caught), but a real second copy of
+             every other onCreate() side effect too (weather loop,
+             slideshow sync, night-mode checker, clock tick) briefly
+             running twice. singleTask routes a second launch intent to
+             the already-running instance's onNewIntent() (a no-op here -
+             MainActivity doesn't override it) instead of creating a new
+             one, without weakening force-stop's actual recovery
+             guarantee - the process kill is unaffected, this only
+             de-duplicates whichever of the two subsequent launches loses
+             the race. -->
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:launchMode="singleTask"
+            android:theme="@style/Theme.AOFrame"
+            android:windowSoftInputMode="adjustResize">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+
+                <category android:name="android.intent.category.LAUNCHER" />
+                <!-- Eligibility for `adb shell cmd package set-home-activity`.
+                     Whether it actually sticks varies by Android build;
+                     BootReceiver below is the proven fallback either way. -->
+                <category android:name="android.intent.category.HOME" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+
+        <receiver
+            android:name=".BootReceiver"
+            android:enabled="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
+    </application>
+
+</manifest>

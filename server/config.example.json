@@ -1,0 +1,6 @@
+{
+  "port": 8080,
+  "frameControlUrl": "http://<your-frame-ip>:8099",
+  "photoStorageDir": "./photos",
+  "ipWhitelist": ["127.0.0.1", "::1"]
+}

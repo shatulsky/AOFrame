@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Same shape/fill as control_button_background.xml, but with a solid
+     green stroke instead of the faint white one - backs
+     controlWebcamOnlyButton's "on" state so the frame's own screen
+     shows at a glance whether webcam-only mode is currently active, not
+     just the admin panel's checkbox. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="oval">
+    <solid android:color="#66000000" />
+    <stroke android:width="3dp" android:color="#FF2ECC71" />
+</shape>

@@ -1,0 +1,7 @@
+node_modules
+tmp
+webcam-cache
+config.json
+confirmed.json
+webcam-enabled.json
+webcam-state.json

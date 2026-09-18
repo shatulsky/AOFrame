@@ -1,0 +1,24 @@
+# Bind-mounts the whole working directory into the container rather than
+# baking code/config into the image (same pattern as ../pi-video-gate) -
+# node_modules stays on the host tree so `npm install` only needs to run
+# once, not on every image rebuild.
+#
+# Default (bridge) networking + a published port, unlike ../pi-video-gate's
+# `network_mode: host` - this is meant to run on any Docker host
+# (including Docker Desktop on Mac/Windows, where host networking
+# isn't supported the same way), not just a Linux Pi. The tradeoff: behind
+# bridge networking, lib/ipWhitelist.js sees the Docker gateway IP rather
+# than the real LAN client IP for every request. If you're deploying to a
+# Linux host and want the whitelist to see real client IPs, switch this to
+# `network_mode: host` and drop the `ports:` block instead.
+services:
+  aoframe-server:
+    build: .
+    container_name: aoframe-server
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - .:/app
+    working_dir: /app
+    command: sh -c "npm install --omit=dev && node server.js"

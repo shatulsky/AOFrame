@@ -1,0 +1,504 @@
+<?xml version="1.0" encoding="utf-8"?><!-- Root layout for the kiosk Activity. Plain View/FrameLayout, not
+     Compose - no complex reactive UI here to justify Compose's runtime
+     cost on constrained hardware.
+
+     Widget layout: current-temp text/icon sized to match the clock time,
+     feels-like/precipitation icons enlarged for legibility, forecast rows
+     use a real TableLayout so the 3 rows' label/icon/temps line up in
+     columns instead of each row wrapping independently, and pill corners
+     are a true 0dp (sharp rectangle, not just a smaller radius). -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <!-- No background on this root - an opaque background here is
+         redundant: photoView/photoBackdropView/a PlayerView
+         always cover the full screen in every real state (see each
+         one's own visibility-toggling logic in SlideshowRenderer),
+         and loadingOverlay (below) covers it during the one window none
+         of those do yet - a pure redundant full-screen paint pass on
+         every single frame, removed rather than kept "just in case". -->
+
+    <!-- Blurred backdrop - shown only behind a
+         photo whose aspect ratio doesn't match the panel's closely
+         enough to crop-to-fill (see PhotoFit.shouldCover()), filling
+         the letterbox gap left by photoView's `fitCenter` in that case.
+         Cheap heavily-downscaled-then-stretched-back-up image (Immich's
+         BACKDROP cache kind, "thumbnail" size), not a real blur filter -
+         a real GPU blur filter can be visibly janky on constrained
+         hardware. Always full-screen/centerCrop
+         itself since it only ever needs to fill gaps, never show detail. -->
+    <ImageView
+        android:id="@+id/photoBackdropView"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:contentDescription="@null"
+        android:scaleType="centerCrop"
+        android:visibility="gone" />
+
+    <ImageView
+        android:id="@+id/photoView"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:contentDescription="@null"
+        android:scaleType="centerCrop" />
+
+    <!-- Video/Live Photo clip playback - Media3 ExoPlayer, not plain
+         VideoView/MediaPlayer. Two instances (front/back) double-buffer:
+         the next clip is preloaded into the hidden "back" player in the
+         last ~2s before a transition and swapped in, avoiding the black
+         flash a fresh setMediaItem()/prepare() on the visible surface
+         causes (that fix was found the hard
+         way). Default/hidden state is `invisible`, not `gone` - a
+         SurfaceView tears down its native surface on GONE and
+         recreates it on VISIBLE, reintroducing a black frame on the
+         swap no matter how well-buffered the back player already is;
+         INVISIBLE keeps the surface alive across the toggle. On some
+         hardware INVISIBLE alone is not enough (a residual ~100ms
+         flash can still be visible) - switched surface_type to `texture_view`:
+         TextureView renders through the normal view hierarchy (a GPU
+         texture) instead of a separate compositor window, so it isn't
+         subject to the same surface-recreation lifecycle at all.
+         Controller hidden - this is a kiosk display, not a media
+         player UI. -->
+    <androidx.media3.ui.PlayerView
+        android:id="@+id/playerViewA"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:visibility="invisible"
+        app:resize_mode="zoom"
+        app:surface_type="texture_view"
+        app:use_controller="false" />
+
+    <androidx.media3.ui.PlayerView
+        android:id="@+id/playerViewB"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:visibility="invisible"
+        app:resize_mode="zoom"
+        app:surface_type="texture_view"
+        app:use_controller="false" />
+
+    <!-- Order matches the real dashboard reference: weekday, then full
+         date, then a large time - date lines above the time, not
+         below. -->
+    <LinearLayout
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top|start"
+        android:layout_margin="24dp"
+        android:background="@drawable/widget_pill_background"
+        android:orientation="vertical"
+        android:paddingHorizontal="16dp"
+        android:paddingVertical="6dp">
+
+        <TextView
+            android:id="@+id/clockWeekdayText"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textColor="#FFFFFF"
+            android:textSize="36sp"
+            tools:text="П'ятниця," />
+
+        <TextView
+            android:id="@+id/clockDateText"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textColor="#FFFFFF"
+            android:textSize="36sp"
+            tools:text="28 серпня 2026 р." />
+
+        <!-- Text set in MainActivity as a SpannableString - the seconds
+             portion gets RelativeSizeSpan+SuperscriptSpan applied so it
+             renders as small raised digits next to the minutes, matching
+             the reference ("16:06" + small raised "58"). -->
+        <TextView
+            android:id="@+id/clockTimeText"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textColor="#FFFFFF"
+            android:textSize="77sp"
+            android:layout_marginTop="-10dp"
+            tools:text="16:06" />
+
+    </LinearLayout>
+
+    <!-- Icon-based rows, not plain text, matching the reference: current
+         temp+icon (large, same size as the clock time), feels-like+
+         precipitation (icons enlarged - too small in an earlier pass),
+         then a real TableLayout for the 3 forecast rows so label/icon/
+         temps line up in columns like the reference's tabular look,
+         instead of each row's LinearLayout wrapping independently.
+         Icons are vector drawables (Meteocons, MIT license), not emoji
+         - see WeatherIcons.kt's header comment. -->
+    <LinearLayout
+        android:id="@+id/weatherWidgetContainer"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top|end"
+        android:layout_margin="24dp"
+        android:background="@drawable/widget_pill_background"
+        android:orientation="vertical"
+        android:paddingHorizontal="16dp"
+        android:paddingVertical="6dp">
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="end"
+            android:gravity="center_vertical">
+
+            <ImageView
+                android:id="@+id/weatherCurrentIcon"
+                android:layout_width="128dp"
+                android:layout_height="128dp"
+                android:contentDescription="@null"
+                tools:src="@drawable/ic_weather_clear_day" />
+
+            <TextView
+                android:id="@+id/weatherCurrentTempText"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="#FFFFFF"
+                android:textSize="77sp"
+                tools:text="26°" />
+
+        </LinearLayout>
+
+        <!-- wrap_content + layout_gravity="end", same pattern as the
+             current-temp row above and the day rows below - so this
+             row's right edge lines up with theirs instead of sitting
+             short of it. The 3 icon-text pairs are flat
+             siblings, not weighted cells - a weighted layout would center
+             each pair inside its own third of the row instead of
+             hugging the right edge, causing misalignment. Every icon uses
+             the same 4dp marginEnd to its own text for a consistent gap,
+             rather than an arbitrary per-icon overlap. -->
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="end"
+            android:layout_marginTop="-20dp"
+            android:gravity="center_vertical">
+
+            <!-- Icons sized larger than the surrounding text to read at a
+                 glance rather than looking undersized next to it. -->
+
+            <ImageView
+                android:layout_width="56dp"
+                android:layout_height="56dp"
+                android:layout_marginEnd="-13dp"
+                android:contentDescription="@null"
+                android:src="@drawable/ic_weather_thermometer" />
+
+            <TextView
+                android:id="@+id/weatherFeelsLikeText"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="8dp"
+                android:maxLines="1"
+                android:textColor="#FFFFFF"
+                android:textSize="32sp"
+                tools:text="25°" />
+
+            <ImageView
+                android:layout_width="56dp"
+                android:layout_height="56dp"
+                android:layout_marginStart="-7dp"
+                android:layout_marginEnd="-14dp"
+                android:contentDescription="@null"
+                android:src="@drawable/ic_weather_raindrop" />
+
+            <TextView
+                android:id="@+id/weatherPrecipText"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="8dp"
+                android:maxLines="1"
+                android:textColor="#FFFFFF"
+                android:textSize="32sp"
+                tools:text="22%" />
+
+            <ImageView
+                android:id="@+id/weatherSeaTempIcon"
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:layout_marginStart="12dp"
+                android:layout_marginEnd="2dp"
+                android:contentDescription="@null"
+                android:src="@drawable/ic_weather_wave" />
+
+            <TextView
+                android:id="@+id/weatherSeaTempText"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:maxLines="1"
+                android:textColor="#FFFFFF"
+                android:textSize="32sp"
+                tools:text="22°" />
+
+        </LinearLayout>
+
+        <!-- Real table: 3 columns (label, icon, temps) x 3 rows - each
+             column's width auto-sizes to its widest cell, so all 3
+             rows' icons/temps line up regardless of label length (a
+             short weekday abbreviation vs. "Today"). No
+             layout_gravity="end" here - that would right-anchor the whole
+             table against the pill's right edge while everything else
+             above it default-aligns left, causing a mismatch between
+             rows. Label cells are right-aligned within their own
+             (widest-cell-sized) column via android:gravity="end", so
+             shorter labels share a right edge with longer ones instead of
+             a left edge. -->
+        <TableLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content">
+
+            <TableRow>
+
+                <TextView
+                    android:id="@+id/weatherDay0Label"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center_vertical"
+                    android:layout_marginEnd="24dp"
+                    android:gravity="end"
+                    android:textColor="#FFFFFF"
+                    android:textSize="28sp"
+                    tools:text="Сьогодні" />
+
+                <ImageView
+                    android:id="@+id/weatherDay0Icon"
+                    android:layout_width="55dp"
+                    android:layout_height="55dp"
+                    android:layout_gravity="center_vertical"
+                    android:layout_marginEnd="20dp"
+                    android:layout_marginTop="-10dp"
+                    android:layout_marginBottom="-10dp"
+                    android:contentDescription="@null"
+                    tools:src="@drawable/ic_weather_clear_day" />
+
+                <TextView
+                    android:id="@+id/weatherDay0MaxTemp"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center_vertical"
+                    android:layout_marginEnd="20dp"
+                    android:textColor="#FFFFFF"
+                    android:textSize="28sp"
+                    tools:text="26°" />
+
+                <TextView
+                    android:id="@+id/weatherDay0MinTemp"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center_vertical"
+                    android:textColor="#FFFFFF"
+                    android:textSize="28sp"
+                    tools:text="21°" />
+
+            </TableRow>
+
+            <TableRow>
+
+                <TextView
+                    android:id="@+id/weatherDay1Label"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center_vertical"
+                    android:layout_marginEnd="24dp"
+                    android:gravity="end"
+                    android:textColor="#FFFFFF"
+                    android:textSize="28sp"
+                    tools:text="Завтра" />
+
+                <ImageView
+                    android:id="@+id/weatherDay1Icon"
+                    android:layout_width="55dp"
+                    android:layout_height="55dp"
+                    android:layout_gravity="center_vertical"
+                    android:layout_marginEnd="20dp"
+                    android:contentDescription="@null"
+                    tools:src="@drawable/ic_weather_partly_cloudy_day" />
+
+                <TextView
+                    android:id="@+id/weatherDay1MaxTemp"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center_vertical"
+                    android:layout_marginEnd="20dp"
+                    android:textColor="#FFFFFF"
+                    android:textSize="28sp"
+                    tools:text="27°" />
+
+                <TextView
+                    android:id="@+id/weatherDay1MinTemp"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center_vertical"
+                    android:textColor="#FFFFFF"
+                    android:textSize="28sp"
+                    tools:text="18°" />
+
+            </TableRow>
+
+            <TableRow>
+
+                <TextView
+                    android:id="@+id/weatherDay2Label"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center_vertical"
+                    android:layout_marginEnd="24dp"
+                    android:gravity="end"
+                    android:textColor="#FFFFFF"
+                    android:textSize="28sp"
+                    tools:text="нд" />
+
+                <ImageView
+                    android:id="@+id/weatherDay2Icon"
+                    android:layout_width="55dp"
+                    android:layout_height="55dp"
+                    android:layout_gravity="center_vertical"
+                    android:layout_marginEnd="20dp"
+                    android:layout_marginTop="-10dp"
+                    android:layout_marginBottom="-10dp"
+                    android:contentDescription="@null"
+                    tools:src="@drawable/ic_weather_clear_day" />
+
+                <TextView
+                    android:id="@+id/weatherDay2MaxTemp"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center_vertical"
+                    android:layout_marginEnd="20dp"
+                    android:textColor="#FFFFFF"
+                    android:textSize="28sp"
+                    tools:text="27°" />
+
+                <TextView
+                    android:id="@+id/weatherDay2MinTemp"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center_vertical"
+                    android:textColor="#FFFFFF"
+                    android:textSize="28sp"
+                    tools:text="19°" />
+
+            </TableRow>
+
+        </TableLayout>
+
+    </LinearLayout>
+
+    <!-- Countdown pill - dark-pill style, bottom-center. Hidden entirely
+         when disabled or no target date is set - see MainActivity's
+         updateCountdown(). -->
+    <LinearLayout
+        android:id="@+id/countdownPill"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom|center_horizontal"
+        android:layout_margin="24dp"
+        android:background="@drawable/widget_pill_background"
+        android:orientation="vertical"
+        android:gravity="center_horizontal"
+        android:paddingHorizontal="16dp"
+        android:paddingVertical="6dp"
+        android:visibility="gone">
+
+        <TextView
+            android:id="@+id/countdownLabelText"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textColor="#FFFFFF"
+            android:textSize="32sp"
+            tools:text="Trip" />
+
+        <TextView
+            android:id="@+id/countdownValueText"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textColor="#FFFFFF"
+            android:textSize="64sp"
+            android:textStyle="bold"
+            tools:text="156 days" />
+
+    </LinearLayout>
+
+    <!-- On-screen controls - prev/next, dark-circle button look,
+         bottom-right position. No on-screen refresh button - that action
+         is reachable via an admin panel's web form and POST
+         /action/refresh-cache instead. controlWebcamOnlyButton, left of
+         prev/next, toggles webcam-only mode straight from the frame (no
+         phone/laptop needed) - see MainActivity.toggleWebcamOnlyMode(). -->
+    <LinearLayout
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom|end"
+        android:layout_margin="24dp"
+        android:orientation="horizontal">
+
+        <ImageButton
+            android:id="@+id/controlWebcamOnlyButton"
+            android:layout_width="80dp"
+            android:layout_height="80dp"
+            android:layout_marginEnd="20dp"
+            android:background="@drawable/control_button_background"
+            android:contentDescription="@null"
+            android:padding="24dp"
+            android:scaleType="fitCenter"
+            android:src="@drawable/ic_control_webcam_only" />
+
+        <ImageButton
+            android:id="@+id/controlPreviousButton"
+            android:layout_width="80dp"
+            android:layout_height="80dp"
+            android:layout_marginEnd="20dp"
+            android:background="@drawable/control_button_background"
+            android:contentDescription="@null"
+            android:padding="24dp"
+            android:scaleType="fitCenter"
+            android:src="@drawable/ic_control_previous" />
+
+        <ImageButton
+            android:id="@+id/controlNextButton"
+            android:layout_width="80dp"
+            android:layout_height="80dp"
+            android:background="@drawable/control_button_background"
+            android:contentDescription="@null"
+            android:padding="24dp"
+            android:scaleType="fitCenter"
+            android:src="@drawable/ic_control_next" />
+
+    </LinearLayout>
+
+    <!-- Cold-start loading screen - covers the whole
+         screen, on top of everything else (last child = drawn last), so
+         the photoView/clock/weather being blank/half-populated during
+         the initial sync is never visible. Hidden once
+         SlideshowRenderer's first asset is actually ready to show - see
+         MainActivity's onFirstFrameReady wiring. Spinner rotation is
+         driven in code (ObjectAnimator), not baked into the drawable
+         itself. -->
+    <FrameLayout
+        android:id="@+id/loadingOverlay"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#000000"
+        tools:visibility="gone">
+
+        <ImageView
+            android:id="@+id/loadingSpinner"
+            android:layout_width="200dp"
+            android:layout_height="200dp"
+            android:layout_gravity="center"
+            android:contentDescription="@null"
+            android:src="@drawable/ic_loading_spinner"
+            tools:visibility="gone" />
+
+    </FrameLayout>
+
+</FrameLayout>

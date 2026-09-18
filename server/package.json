@@ -1,0 +1,14 @@
+{
+  "name": "aoframe-server",
+  "version": "1.0.0",
+  "description": "Optional reference admin server for AOFrame - proxies the app's on-device LocalControlServer and provides the CRUD photo API for Immich-optional (local) mode.",
+  "private": true,
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "multer": "^1.4.5-lts.1"
+  }
+}

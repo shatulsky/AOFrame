@@ -1,0 +1,31 @@
+# Hand-authored Baseline Profile - no macrobenchmark module exists yet to
+# generate one from real trace data, so this is deliberately conservative:
+# class-level rules for the classes on the cold-start path (boot-to-
+# display, showing the first photo, transitioning photos, starting a
+# video, opening the small control overlay, and parsing the initial
+# manifest), not a blanket app-wide wildcard. Requires the release
+# buildType's `optimization.enable = true` (build.gradle.kts) - R8
+# rewrites these rules to match obfuscated/optimized code.
+#
+# HSPL = Hot + Startup + Post-startup, applied via method wildcard to
+# classes that are genuinely exercised on every cold start AND on every
+# slide transition after that (so "hot" is a reasonable claim, not just
+# a guess): the Activity itself, the cache DB/sync, the Immich client,
+# and the slideshow renderer's decode/Ken Burns/HTTP-control path.
+HSPLdev/aoframe/MainActivity;->**(**)**
+HSPLdev/aoframe/cache/AssetCacheDatabase;->**(**)**
+HSPLdev/aoframe/cache/AssetCacheSync;->**(**)**
+HSPLdev/aoframe/immich/AssetRepository;->**(**)**
+HSPLdev/aoframe/immich/ImmichClient;->**(**)**
+HSPLdev/aoframe/render/SlideshowRenderer;->**(**)**
+HSPLdev/aoframe/render/BitmapSampling;->**(**)**
+HSPLdev/aoframe/render/KenBurnsMath;->**(**)**
+HSPLdev/aoframe/render/PhotoFit;->**(**)**
+HSPLdev/aoframe/control/LocalControlServer;->**(**)**
+
+# SP (Startup + Post-startup, no Hot claim) - read/parsed at startup and
+# again on background refreshes, but not tight per-frame loops.
+SPLdev/aoframe/immich/ImmichSecrets;->**(**)**
+SPLdev/aoframe/immich/ImmichAsset;->**(**)**
+SPLdev/aoframe/weather/WeatherClient;->**(**)**
+SPLdev/aoframe/widgets/ClockFormatter;->**(**)**
