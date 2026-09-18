@@ -8,6 +8,8 @@ kiosk UI and any browser-based dashboard approach with something native,
 low-overhead, and tuned for the low-end, passively-cooled hardware these
 frames typically ship with.
 
+![Demo: full-screen slideshow with clock, weather, countdown, and face-targeted Ken Burns zoom on a video slide](docs/images/demo.gif)
+
 ## Why
 
 Frameo-based frames are cheap, decent hardware locked behind a

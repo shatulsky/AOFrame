@@ -23,6 +23,7 @@ const PORT = config.port || 8080;
 
 const app = express();
 app.use(ipWhitelist);
+app.use(express.json());
 
 registerDashboardRoutes(app);
 registerFrameActionRoutes(app);

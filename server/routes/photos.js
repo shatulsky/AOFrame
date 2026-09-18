@@ -16,6 +16,7 @@ const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 const multer = require("multer");
+const { execFile } = require("child_process");
 const config = require("../config.json");
 
 const STORAGE_DIR = path.resolve(__dirname, "..", config.photoStorageDir || "./photos");
@@ -34,6 +35,28 @@ function saveManifest(manifest) {
 	fs.writeFileSync(MANIFEST_PATH, JSON.stringify(manifest, null, 2));
 }
 
+// Every uploaded video gets forced through this, unconditionally - unlike
+// pi-video-gate's Immich-side normalization (fps only, since Immich's own
+// uploads are rarely more exotic than that), this server has no idea what
+// a user will throw at it. A phone's HDR "Cinematic"/10-bit export (H.264
+// High 10 or HEVC Main10, BT.2020/HLG color) decodes its audio track fine
+// on both the emulator's software decoder and the frame's Rockchip
+// hardware decoder, but produces zero visible video frames on either -
+// confirmed live, not a theoretical concern. Same ffmpeg shape as
+// pi-video-gate's own runFfmpeg() (-r 30, libx264, no explicit -pix_fmt) -
+// that command already re-encodes 10-bit HDR sources down to plain 8-bit
+// on the Immich path and is confirmed working on this hardware, so this
+// mirrors it rather than inventing a separate color-managed tonemap chain.
+function transcodeVideo(inputPath, outputPath) {
+	return new Promise((resolve, reject) => {
+		execFile(
+			"ffmpeg",
+			["-y", "-i", inputPath, "-r", "30", "-c:v", "libx264", "-crf", "18", "-preset", "veryfast", "-c:a", "copy", outputPath],
+			(error) => (error ? reject(error) : resolve())
+		);
+	});
+}
+
 const upload = multer({
 	storage: multer.diskStorage({
 		destination: STORAGE_DIR,
@@ -44,8 +67,7 @@ const upload = multer({
 		}
 	}),
 	// 500MB ceiling - generous enough for an unedited phone/camera video
-	// clip (this app's LocalAssetSync has no transcoding step of its own,
-	// unlike pi-video-gate's Immich-side fps normalization), while still
+	// clip before transcodeVideo() below normalizes it down, while still
 	// bounding a single upload's disk/memory footprint.
 	limits: { fileSize: 500 * 1024 * 1024 },
 	fileFilter: (req, file, cb) => {
@@ -54,15 +76,33 @@ const upload = multer({
 });
 
 module.exports = function registerPhotoRoutes(app) {
-	app.post("/api/photos", upload.single("photo"), (req, res) => {
+	app.post("/api/photos", upload.single("photo"), async (req, res) => {
 		if (!req.file) {
 			res.status(400).json({ error: "no file uploaded (expected multipart field 'photo', one of image/jpeg|png|webp|gif|video/mp4)" });
 			return;
 		}
+
+		if (req.file.mimetype === "video/mp4") {
+			const uploadedPath = path.join(STORAGE_DIR, req.file.filename);
+			const normalizedPath = path.join(STORAGE_DIR, `${req.uploadedId}.normalized.mp4`);
+			try {
+				await transcodeVideo(uploadedPath, normalizedPath);
+				fs.renameSync(normalizedPath, path.join(STORAGE_DIR, `${req.uploadedId}.mp4`));
+				if (uploadedPath !== path.join(STORAGE_DIR, `${req.uploadedId}.mp4`)) fs.rmSync(uploadedPath, { force: true });
+			} catch (error) {
+				fs.rmSync(uploadedPath, { force: true });
+				fs.rmSync(normalizedPath, { force: true });
+				res.status(400).json({ error: `video could not be processed: ${error.message}` });
+				return;
+			}
+		}
+
 		const manifest = loadManifest();
 		manifest[req.uploadedId] = {
 			originalName: req.file.originalname,
-			ext: path.extname(req.file.originalname),
+			// Always .mp4 for video - transcodeVideo() above always
+			// outputs mp4 regardless of the uploaded container.
+			ext: req.file.mimetype === "video/mp4" ? ".mp4" : path.extname(req.file.originalname),
 			mimeType: req.file.mimetype,
 			uploadedAt: new Date().toISOString()
 		};
@@ -83,6 +123,29 @@ module.exports = function registerPhotoRoutes(app) {
 			return;
 		}
 		res.sendFile(path.join(STORAGE_DIR, req.params.id + meta.ext));
+	});
+
+	// Manual Ken Burns face target for local-mode photos - local mode has
+	// no face-detection story of its own (see LocalAssetSync.kt's own
+	// comment), so this is the only way to give an IMAGE asset a faceX/
+	// faceY target at all. Values are the same 0-100 top-left-origin
+	// percentages ImmichAsset.faceX/faceY already expect.
+	app.patch("/api/photos/:id/face", (req, res) => {
+		const manifest = loadManifest();
+		const meta = manifest[req.params.id];
+		if (!meta) {
+			res.status(404).end();
+			return;
+		}
+		const { faceX, faceY } = req.body || {};
+		if (typeof faceX !== "number" || typeof faceY !== "number" || faceX < 0 || faceX > 100 || faceY < 0 || faceY > 100) {
+			res.status(400).json({ error: "expected JSON body {faceX, faceY} as numbers 0-100" });
+			return;
+		}
+		meta.faceX = faceX;
+		meta.faceY = faceY;
+		saveManifest(manifest);
+		res.json({ id: req.params.id, ...meta });
 	});
 
 	app.delete("/api/photos/:id", (req, res) => {

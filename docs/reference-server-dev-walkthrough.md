@@ -63,9 +63,32 @@ The app's own `LocalAssetSync` (on the Android side) polls
 following the exact same "evict what's gone, download what's missing"
 pattern as its Immich-mode counterpart — see
 [`app-architecture.md`](app-architecture.md) for why that pattern exists.
-Photo bytes never pass through any additional processing here (no
-resizing/re-encoding) — whatever you upload is exactly what the app
-downloads and decodes on-device.
+
+Endpoints:
+
+- `GET /api/photos` — list everything: `[{id, originalName, ext, mimeType, uploadedAt, faceX?, faceY?}, ...]`.
+- `POST /api/photos` — multipart upload, field name `photo`, one of
+  `image/jpeg|png|webp|gif` or `video/mp4`. Returns the same shape as one
+  list entry.
+- `GET /api/photos/:id` — download the raw file (what `LocalAssetSync`
+  actually fetches).
+- `PATCH /api/photos/:id/face` — JSON body `{faceX, faceY}`, each 0-100,
+  top-left origin. Sets a manual Ken Burns face target for an IMAGE asset
+  — this mode has no automatic face detection of its own (no equivalent
+  data source to Immich's), so this is the only way an IMAGE asset gets
+  one. Video/Live-Photo assets ignore it; there's no pairing concept for
+  Live Photos in local mode either.
+- `DELETE /api/photos/:id` — removes the file and its manifest entry.
+
+Photos pass through untouched (no resizing/re-encoding). Videos don't -
+every upload is transcoded to 8-bit SDR H.264 (plain `libx264`/`-r 30`,
+the same shape as `pi-video-gate`'s own fps-normalization command) before
+it's ever stored. This was added after confirming some phone HDR/10-bit
+exports (H.264 High 10 or HEVC Main10, BT.2020/HLG color) decode their
+audio track fine but never produce a visible video frame on this app's
+target hardware - reproduced identically on both the emulator's software
+decoder and the frame's Rockchip hardware decoder. A video that ffmpeg
+can't process at all is rejected with `400` rather than stored broken.
 
 ## Security posture — call this out explicitly if you extend it
 

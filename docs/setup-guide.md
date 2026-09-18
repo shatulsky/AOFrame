@@ -135,10 +135,15 @@ If you just want local mode without Immich:
 in `immich-secrets.json` — `baseUrl`/`apiKey` aren't needed at all in
 this mode. Upload photos/videos via the reference server's dashboard (or
 its `/api/photos` API directly); the app polls that instead of Immich.
-Face-targeted Ken Burns and Live Photo pairing aren't available in this
-mode (there's no equivalent data source for either), but everything else
-— weather, countdown, night mode, webcam clips — works identically to
-Immich mode.
+Every uploaded video is automatically normalized to 8-bit SDR H.264 on
+upload (some phone HDR/10-bit exports otherwise decode audio fine but
+never render a visible frame on this app's target hardware) — see
+[`reference-server-dev-walkthrough.md`](reference-server-dev-walkthrough.md)
+for details. There's no automatic face detection in this mode, but you
+can set a Ken Burns face target manually via `PATCH /api/photos/:id/face`
+(same doc); Live Photo pairing still isn't available (no equivalent data
+source for it). Everything else — weather, countdown, night mode, webcam
+clips — works identically to Immich mode.
 
 ## 6. (Optional) Performance/persistence scripts
 

@@ -23,17 +23,24 @@ private const val VIDEO_PLACEHOLDER_HEIGHT = 1080
  * `photoSource: local` counterpart to AssetCacheSync - same
  * evict-stale-then-download-missing shape and the same
  * AssetCacheDatabase tables, just sourced from the AOFrame reference
- * server's plain CRUD photo API instead of Immich. No face targeting (no
- * face-detection story exists for this source) and no Live Photo pairing
- * (the reference server's upload API is single-file-per-photo) - both
- * simply stay null/absent, which SlideshowRenderer already tolerates for
- * any IMAGE asset with no detected face.
+ * server's plain CRUD photo API instead of Immich. No automatic face
+ * detection (no face-detection story exists for this source) - faceX/
+ * faceY only ever come from a manual PATCH /api/photos/:id/face call
+ * (see LocalPhotoClient.LocalPhoto), otherwise null, same as an
+ * undetected face on the Immich side. No Live Photo pairing either (the
+ * reference server's upload API is single-file-per-photo) - stays null/
+ * absent, which SlideshowRenderer already tolerates.
  *
  * Deliberately a separate class rather than a second code path inside
  * AssetCacheSync - the two sources share the cache/renderer contract
  * (both produce plain ImmichAsset rows) but nothing about the fetch
  * logic itself, so a shared class would just be an if/else split on
  * every method.
+ *
+ * No transcoding on this side - the reference server itself normalizes
+ * every uploaded video to 8-bit SDR H.264 on upload (see
+ * server/routes/photos.js's transcodeVideo()), so whatever this
+ * downloads is already guaranteed playable.
  */
 class LocalAssetSync(
     context: Context,
@@ -50,7 +57,9 @@ class LocalAssetSync(
                 type = if (photo.mimeType.startsWith("video/")) ImmichAssetType.VIDEO else ImmichAssetType.IMAGE,
                 videoId = null,
                 width = VIDEO_PLACEHOLDER_WIDTH,
-                height = VIDEO_PLACEHOLDER_HEIGHT
+                height = VIDEO_PLACEHOLDER_HEIGHT,
+                faceX = photo.faceX,
+                faceY = photo.faceY
             )
         }
 

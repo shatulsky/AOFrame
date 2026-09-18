@@ -17,7 +17,11 @@ import java.util.concurrent.TimeUnit
  * simpler API with no auth/pagination/face-query concepts.
  */
 class LocalPhotoClient(private val baseUrl: String) {
-    data class LocalPhoto(val id: String, val mimeType: String)
+    // faceX/faceY: optional 0-100 top-left-origin Ken Burns target, set
+    // via PATCH /api/photos/:id/face (server/routes/photos.js) - the only
+    // way an IMAGE asset gets a face target in local mode, which has no
+    // face-detection story of its own.
+    data class LocalPhoto(val id: String, val mimeType: String, val faceX: Float? = null, val faceY: Float? = null)
 
     private val http = OkHttpClient.Builder()
         .connectTimeout(10, TimeUnit.SECONDS)
@@ -34,7 +38,12 @@ class LocalPhotoClient(private val baseUrl: String) {
             val array = JSONArray(text)
             (0 until array.length()).map { index ->
                 val obj = array.getJSONObject(index)
-                LocalPhoto(id = obj.getString("id"), mimeType = obj.optString("mimeType", "image/jpeg"))
+                LocalPhoto(
+                    id = obj.getString("id"),
+                    mimeType = obj.optString("mimeType", "image/jpeg"),
+                    faceX = obj.optDouble("faceX").takeUnless { it.isNaN() }?.toFloat(),
+                    faceY = obj.optDouble("faceY").takeUnless { it.isNaN() }?.toFloat()
+                )
             }
         }
     }
