@@ -57,6 +57,30 @@ class WebcamClipSync(
         .readTimeout(30, TimeUnit.SECONDS)
         .build()
 
+    // Network-free companion to sync() below - backs the on-screen webcam
+    // button's instant switch (MainActivity.toggleWebcamOnlyMode()), which
+    // wants to show whatever's already on disk from the last sync()
+    // immediately rather than block on a fresh manifest fetch + re-download
+    // of clips that likely haven't changed. Reads WebcamSyncState's
+    // per-camera "last downloaded" record (a local file, not the gate's
+    // manifest) and keeps only the ones whose clip file is still actually
+    // present - covers a fresh install/filesDir wipe (which clears
+    // WebcamSyncState too, so this naturally returns empty then) and any
+    // camera dropped mid-sync last time. Empty return means "nothing cached
+    // yet", and callers fall back to the real sync() in that case.
+    fun cachedAssets(): List<ImmichAsset> =
+        WebcamSyncState.load(context).keys
+            .filter { id -> File(cacheDir, "webcam-$id-video").exists() }
+            .map { id ->
+                ImmichAsset(
+                    id = "webcam-$id",
+                    type = ImmichAssetType.VIDEO,
+                    videoId = null,
+                    width = PLACEHOLDER_WIDTH,
+                    height = PLACEHOLDER_HEIGHT
+                )
+            }
+
     // Any per-camera or manifest-fetch failure is caught here and simply
     // omits that camera from the returned list, never fails the whole
     // sync - some cameras may simply be unavailable at any given moment.

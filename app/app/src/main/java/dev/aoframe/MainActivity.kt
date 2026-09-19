@@ -101,6 +101,10 @@ class MainActivity : ComponentActivity() {
     private var loadingSpinnerAnimator: ObjectAnimator? = null
     private var localControlServer: LocalControlServer? = null
     private var lastSyncAtMs: Long? = null
+    // Snapshot of whatever non-webcam assets were on screen right before
+    // switching into webcam-only mode - see toggleWebcamOnlyMode()'s own
+    // comment for why this exists.
+    private var lastNonWebcamAssets: List<ImmichAsset>? = null
     // Debounces onScreenWoke() against rapid repeated onResume() calls -
     // see WakeRefreshGate's own comment.
     private val webcamWakeRefreshGate = WakeRefreshGate()
@@ -303,12 +307,25 @@ class MainActivity : ComponentActivity() {
     // Dismisses the cold-start loading screen - called once the first
     // real slideshow frame is ready, or if sync fails/has nothing to show
     // (see startSlideshowSync()) so a broken sync doesn't leave the user
-    // staring at a spinner forever instead of the (blank) slideshow.
+    // staring at a spinner forever instead of the (blank) slideshow. Also
+    // reused by toggleWebcamOnlyMode() below for the same overlay, once
+    // the freshly-synced assets it's waiting on are ready.
     private fun hideLoadingOverlay() {
         if (loadingOverlay.visibility == View.GONE) return
         loadingOverlay.visibility = View.GONE
         loadingSpinnerAnimator?.cancel()
         loadingSpinnerAnimator = null
+    }
+
+    // Re-shows the same cold-start overlay/spinner for toggleWebcamOnlyMode()
+    // below, so switching into (or out of) webcam-only mode reads as "loading"
+    // rather than silently continuing to show the old rotation while the
+    // switch's own sync is still in flight. Idempotent, same reasoning as
+    // hideLoadingOverlay() above.
+    private fun showLoadingOverlay() {
+        if (loadingOverlay.visibility == View.VISIBLE) return
+        loadingOverlay.visibility = View.VISIBLE
+        startLoadingSpinner()
     }
 
     override fun onDestroy() {
@@ -494,25 +511,73 @@ class MainActivity : ComponentActivity() {
     // controlWebcamOnlyButton, left of prev/next) - toggles the same
     // WebcamTestModeStore switch the admin panel's checkbox controls (see
     // LocalControlServer.handleWebcamTestMode()). shuffleEnabled itself is
-    // set inside syncAssets() (see that function's comment), not here, so
-    // every caller of syncAssets() - this one, the admin panel's checkbox,
-    // and the 30-min background sync - stays consistent for free.
+    // normally set inside syncAssets() (see that function's comment), but
+    // the instant-switch paths below bypass syncAssets() entirely, so they
+    // set it themselves to the same value it would've picked.
     //
-    // Switches immediately to whatever's already cached
-    // (refreshSlideshow(), same as turning the mode off), then forces a
-    // fresh capture and re-syncs again once it lands, in the background -
-    // rather than waiting for a full forced capture cycle (which can take
-    // a minute or more with several cameras) to finish before switching
-    // the display at all, which would make a button press look like it
-    // silently did nothing in the meantime. Instant visible feedback now,
-    // upgraded to the freshest clips shortly after instead of gating the
-    // switch on them.
+    // Both directions already have everything they need sitting on the
+    // frame from the last real sync - there's no reason to block the
+    // switch on a fresh network round trip:
+    //  - Turning ON: WebcamClipSync.cachedAssets() reads back whatever
+    //    clips are already downloaded (no manifest fetch, no re-download -
+    //    sync() always re-downloads unconditionally, see its own comment,
+    //    which is fine for a background refresh but wasteful to block a
+    //    button press on when the clips likely haven't changed).
+    //  - Turning OFF: lastNonWebcamAssets, captured just below right
+    //    before switching away from it - the Immich/local library was
+    //    already synced at most SLIDESHOW_SYNC_INTERVAL_MS ago and hasn't
+    //    gone anywhere, so there's no need to re-fetch it just to show the
+    //    same rotation again.
+    // Either branch falls back to the cold-start loading overlay + a real
+    // syncAssets() only if nothing's cached yet (e.g. right after install,
+    // or the very first time this mode is used). A real refresh still
+    // follows in the background either way - forceFreshWebcamCaptureInBackground()
+    // (forces a new capture cycle, then re-syncs) turning on,
+    // runBackgroundSync() (a plain non-disruptive re-sync) turning off -
+    // so what's on screen is upgraded to the freshest data shortly after
+    // instead of gating the switch on it.
     private fun toggleWebcamOnlyMode() {
         lifecycleScope.launch {
             val nowEnabled = !WebcamTestModeStore.load(this@MainActivity).enabled
             WebcamTestModeStore.save(this@MainActivity, WebcamTestModeConfig(nowEnabled))
-            refreshSlideshow()
-            if (nowEnabled) forceFreshWebcamCaptureInBackground()
+            updateWebcamOnlyButtonAppearance()
+            slideshowRenderer.setShuffleEnabled(!nowEnabled)
+
+            val cached = if (nowEnabled) {
+                lastNonWebcamAssets = slideshowRenderer.currentAssets().filterNot { it.id.startsWith("webcam-") }
+                WebcamClipSync(this@MainActivity, assetCacheDatabase).cachedAssets()
+            } else {
+                lastNonWebcamAssets
+            }
+
+            if (!cached.isNullOrEmpty()) {
+                slideshowRenderer.start(cached)
+            } else {
+                showLoadingOverlay()
+                val assets = syncAssets()
+                if (assets == null) {
+                    hideLoadingOverlay()
+                    return@launch
+                }
+                slideshowRenderer.start(assets, onFirstFrameReady = ::hideLoadingOverlay)
+                // An empty result (e.g. no webcam clips available yet) never
+                // fires onFirstFrameReady - dismiss immediately rather than
+                // spinning forever, same as runInitialSync()'s own comment.
+                if (assets.isEmpty()) hideLoadingOverlay()
+            }
+
+            if (nowEnabled) {
+                // Always worth forcing a new capture cycle regardless of
+                // which branch above ran - sync()/cachedAssets() only ever
+                // return what the gate already had, never a genuinely new
+                // capture.
+                forceFreshWebcamCaptureInBackground()
+            } else if (!cached.isNullOrEmpty()) {
+                // Only needed after the cached fast-path above - the
+                // fallback's syncAssets() call was already a live fetch,
+                // so a second one here would just duplicate it.
+                runBackgroundSync()
+            }
         }
     }
 
