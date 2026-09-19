@@ -25,7 +25,14 @@ class WeatherClientTest {
         // Same mock server for both - fetch() tells the two calls apart
         // by path (/v1/forecast vs /v1/marine), not by host.
         val url = server.url("/").toString().removeSuffix("/")
-        client = WeatherClient(baseUrl = url, marineBaseUrl = url)
+        client = WeatherClient(
+            latitude = 50.45,
+            longitude = 30.52,
+            seaLatitude = 46.48,
+            seaLongitude = 30.72,
+            baseUrl = url,
+            marineBaseUrl = url
+        )
     }
 
     @After

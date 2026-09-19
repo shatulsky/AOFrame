@@ -29,7 +29,14 @@ private const val CHECK_INTERVAL_MS = 30_000L
  */
 class NightModeController(
     private val context: Context,
-    private val scope: CoroutineScope
+    private val scope: CoroutineScope,
+    // Overridable only by tests - production always uses the real clock/
+    // root-shell mechanism (see this class's own header comment for why
+    // root-shell). Defaulted rather than a separate test subclass/
+    // interface, so MainActivity's call site stays untouched.
+    private val today: () -> LocalDate = { LocalDate.now() },
+    private val nowMinutes: () -> Int = { NightModeTiming.minutesOfDay(LocalTime.now()) },
+    private val runRootShell: (String) -> Unit = ::runRealRootShell
 ) {
     private var lastSleepTriggeredDate: LocalDate? = null
     private var lastWakeTriggeredDate: LocalDate? = null
@@ -43,13 +50,15 @@ class NightModeController(
         }
     }
 
-    private fun checkOnce() {
+    // Internal, not private - lets tests drive a single check deterministically
+    // instead of waiting on the real 30s loop/wall clock (see NightModeControllerTest).
+    internal fun checkOnce() {
         try {
             val config = NightModeStore.load(context)
             if (!config.enabled) return
 
-            val today = LocalDate.now()
-            val nowMinutes = NightModeTiming.minutesOfDay(LocalTime.now())
+            val today = today()
+            val nowMinutes = nowMinutes()
 
             if (NightModeTiming.shouldTrigger(
                     nowMinutes, NightModeTiming.parseMinutesOfDay(config.sleepTime), today, lastSleepTriggeredDate
@@ -73,13 +82,13 @@ class NightModeController(
             Log.e(TAG, "Night-mode check failed", error)
         }
     }
+}
 
-    private fun runRootShell(command: String) {
-        try {
-            val process = ProcessBuilder("su", "-c", command).start()
-            process.waitFor()
-        } catch (error: Exception) {
-            Log.e(TAG, "Night-mode root command failed: $command", error)
-        }
+private fun runRealRootShell(command: String) {
+    try {
+        val process = ProcessBuilder("su", "-c", command).start()
+        process.waitFor()
+    } catch (error: Exception) {
+        Log.e(TAG, "Night-mode root command failed: $command", error)
     }
 }

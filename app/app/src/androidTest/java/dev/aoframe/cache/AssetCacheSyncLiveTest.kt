@@ -6,6 +6,7 @@ import dev.aoframe.immich.ImmichSecretsStore
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
+import org.junit.Ignore
 import org.junit.Test
 import java.io.File
 
@@ -15,6 +16,7 @@ import java.io.File
  * immich-secrets.json already pushed to this app's internal storage.
  */
 class AssetCacheSyncLiveTest {
+    @Ignore("Live sanity check - needs immich-secrets.json pushed to a real device with a reachable Immich server. Remove @Ignore to run manually.")
     @Test
     fun syncDownloadsAndRecordsFiles() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext

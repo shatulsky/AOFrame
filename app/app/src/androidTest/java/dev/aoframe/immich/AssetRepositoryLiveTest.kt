@@ -4,6 +4,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.fail
+import org.junit.Ignore
 import org.junit.Test
 
 /**
@@ -15,6 +16,7 @@ import org.junit.Test
  * failure should look different.
  */
 class AssetRepositoryLiveTest {
+    @Ignore("Live sanity check - needs immich-secrets.json pushed to a real device with a reachable Immich server. Remove @Ignore to run manually.")
     @Test
     fun refreshAssetsReturnsRealData() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
