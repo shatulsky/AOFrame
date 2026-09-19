@@ -131,11 +131,11 @@ sleep/wake call rather than blindly firing one.
 **`pi-video-gate`'s own webcam-capture loop reads this field too**
 (`isFrameAsleep()` in `pi-video-gate/server.js`, polled every 30
 minutes) to skip capturing a fresh webcam clip while nobody's going to
-see it. Originally checked the night-mode *schedule* window instead
-(`GET /action/night-mode`'s `sleepTime`/`wakeTime`) — switched
-2026-09-20 because that missed any sleep triggered outside the
-configured window (a presence-based automation putting the display to
-sleep mid-afternoon, for instance): the schedule check would keep
-capturing into a screen that was actually off. `screenAwake` is the
+see it, checking the frame's real screen state rather than the
+night-mode *schedule* window (`GET /action/night-mode`'s
+`sleepTime`/`wakeTime`) — the schedule alone misses any sleep triggered
+outside the configured window (a presence-based automation putting the
+display to sleep mid-afternoon, for instance), which would otherwise
+keep capturing into a screen that was actually off. `screenAwake` is the
 signal this was always really after, regardless of *why* the screen is
 off.

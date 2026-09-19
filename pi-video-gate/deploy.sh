@@ -79,7 +79,19 @@ fi
 
 if [ "$changed" -eq 1 ]; then
 	echo "Rebuilding and restarting the pi-video-gate container..."
-	ssh "${SSH_OPTS[@]}" "$PI_HOST" "cd $REMOTE_DIR && docker compose up -d --build" >/dev/null
+	# `--build` alone is not reliably sufficient here: this image never
+	# COPYs server.js in (see Dockerfile's own header comment - it's
+	# bind-mounted), so a server.js-only change never changes the built
+	# image, and Compose can no-op "up -d" against an already-running
+	# container when neither the image nor the compose config changed -
+	# the old Node process just keeps running with the old file already
+	# loaded in memory. An explicit `restart` is required to make the
+	# process actually re-require() the changed file. Confirmed directly
+	# (docker inspect + docker exec grep inside the container): a
+	# server.js-only redeploy left the container's StartedAt unchanged
+	# with `--build` alone, and only a following `restart` updated it -
+	# not something to rely on Compose to do automatically.
+	ssh "${SSH_OPTS[@]}" "$PI_HOST" "cd $REMOTE_DIR && docker compose up -d --build && docker compose restart pi-video-gate" >/dev/null
 	echo "Done - container rebuilt/restarted."
 else
 	echo "Nothing changed - container not restarted."

@@ -276,13 +276,11 @@ class MainActivity : ComponentActivity() {
             // Real display power state (android.os.PowerManager), not the
             // night-mode schedule's inferred isWithinSleepWindowNow() -
             // that one stays schedule-based on purpose (MainActivity's
-            // syncAssets() and pi-video-gate's own isFrameAsleep() key off
-            // the *configured window*, not the real screen, to skip
-            // webcam work during the night regardless of a manual dev
-            // wake - see NightModeStore's own comment). This field is the
-            // ground truth any external caller (pi-dashboard, HA) needs to
-            // avoid redundant sleep/wake keyevents - added 2026-09-20 for
-            // the presence-based auto-sleep automation.
+            // own syncAssets() keys off the *configured window*, not the
+            // real screen, to skip webcam work during the night
+            // regardless of a manual dev wake - see NightModeStore's own
+            // comment). This field is the ground truth any external
+            // caller needs to avoid firing a redundant sleep/wake action.
             .put("screenAwake", powerManager.isInteractive)
     }
 

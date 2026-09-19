@@ -487,26 +487,23 @@ function probeDurationSeconds(filePath) {
 	});
 }
 
-// Reads the frame's LocalControlServer /status (LocalControlServer.kt,
-// MainActivity.buildStatusJson()'s screenAwake field, added 2026-09-20),
-// read-only, never posts. Fails OPEN (assume "not asleep") on any error,
-// including frameControlUrl not being configured at all - a transient
+// Reads the frame's LocalControlServer /status
+// (MainActivity.buildStatusJson()'s screenAwake field), read-only,
+// never posts. Fails OPEN (assume "not asleep") on any error, including
+// frameControlUrl not being configured at all - a transient
 // control-server hiccup, or the feature simply not being set up, must
 // never silently stop clip refreshing.
 //
-// Switched 2026-09-20 from checking the night-mode *schedule* window
-// (GET /action/night-mode's sleepTime/wakeTime, a range check against
-// the current clock time - the removed isWithinSleepWindow/
-// minutesOfDay/parseMinutesOfDay helpers) to checking the frame's real
-// screen-power state directly. The schedule-only check missed the
-// presence-based auto-sleep automation entirely (homeassistant/docs/
-// automations.md) - a frame put to sleep at 2pm because everyone left
-// the house is outside any configured night window, so the old check
-// kept capturing webcam clips into a frame that wasn't going to show
-// them until it woke back up. Real screenAwake is the actual signal
-// this function has always wanted ("is anyone going to see this clip
-// soon"), regardless of *why* the screen is off - schedule, presence,
-// or a manual sleep-now button all now correctly skip a capture cycle.
+// Checks the frame's real screen-power state directly, not the
+// night-mode *schedule* window (GET /action/night-mode's
+// sleepTime/wakeTime, a plain range check against the current clock
+// time). A schedule-only check misses anything that puts the screen to
+// sleep outside the configured window - a presence-based
+// home-automation trigger, a manual sleep-now action - and would keep
+// capturing webcam clips into a screen that wasn't going to show them
+// until it woke back up. Real screenAwake is the actual signal this
+// function has always wanted ("is anyone going to see this clip
+// soon"), regardless of *why* the screen is off.
 async function isFrameAsleep() {
 	if (!FRAME_CONTROL_URL) return false;
 	try {

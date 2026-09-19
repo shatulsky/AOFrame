@@ -22,7 +22,7 @@ import java.time.LocalDate
  * NightModeTimingTest - these tests focus on the controller's own state
  * (once-per-day dedup, config-disabled short circuit, malformed-config
  * resilience, and skipping a keyevent when the screen's already in the
- * target state - added 2026-09-20 alongside the isScreenAwake seam).
+ * target state).
  */
 class NightModeControllerTest {
     private val context = InstrumentationRegistry.getInstrumentation().targetContext
@@ -103,10 +103,10 @@ class NightModeControllerTest {
 
     @Test
     fun checkOnceSkipsSleepKeyeventWhenScreenIsAlreadyAsleep() {
-        // Simulates an external actor (pi-dashboard's manual sleep-now
-        // button, or the presence-based HA automation) having already put
-        // the screen to sleep before this scheduled tick runs - the whole
-        // point of the isScreenAwake seam added 2026-09-20.
+        // Simulates an external actor (a manual sleep-now action, or a
+        // home-automation trigger) having already put the screen to
+        // sleep before this scheduled tick runs - the whole point of the
+        // isScreenAwake seam.
         val controller = controllerAt(
             sleepTime = "01:00", wakeTime = "08:00", minute = NightModeTiming.parseMinutesOfDay("01:00"), screenAwake = false
         )

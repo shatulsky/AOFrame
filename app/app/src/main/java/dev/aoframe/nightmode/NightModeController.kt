@@ -63,15 +63,12 @@ class NightModeController(
             val nowMinutes = nowMinutes()
             // Real screen-power state (android.os.PowerManager), not just
             // the once-per-day date dedup below - an external actor
-            // (pi-dashboard's manual sleep/wake buttons, or the
-            // presence-based HA automation, both hitting this same device
-            // via ADB root keyevents) can already have put the screen in
-            // the target state before this scheduled tick runs. Checking
-            // first avoids firing a redundant keyevent - harmless since
-            // KEYCODE_SLEEP/WAKEUP are idempotent, but pointless work, and
-            // the whole point of this refactor (2026-09-20, see
-            // homeassistant/docs/automations.md's presence-based
-            // auto-sleep automation) is to stop doing pointless work.
+            // hitting this device via ADB root keyevents (a manual
+            // sleep/wake action, or a home-automation trigger) can already
+            // have put the screen in the target state before this
+            // scheduled tick runs. Checking first avoids firing a
+            // redundant keyevent - harmless since KEYCODE_SLEEP/WAKEUP are
+            // idempotent, but pointless work.
             val screenAwake = isScreenAwake()
 
             if (NightModeTiming.shouldTrigger(
