@@ -262,6 +262,7 @@ class MainActivity : ComponentActivity() {
     private fun buildStatusJson(): JSONObject {
         val countsByType = assetCacheDatabase.countsByType()
         val faceStats = assetCacheDatabase.faceQueryStats()
+        val powerManager = getSystemService(POWER_SERVICE) as PowerManager
         return JSONObject()
             .put("lastSyncAt", lastSyncAtMs ?: JSONObject.NULL)
             .put("assetCount", assetCacheDatabase.assetCount())
@@ -272,6 +273,17 @@ class MainActivity : ComponentActivity() {
             .put("facesFound", faceStats.found)
             .put("facesNone", faceStats.none)
             .put("facesPending", faceStats.pending)
+            // Real display power state (android.os.PowerManager), not the
+            // night-mode schedule's inferred isWithinSleepWindowNow() -
+            // that one stays schedule-based on purpose (MainActivity's
+            // syncAssets() and pi-video-gate's own isFrameAsleep() key off
+            // the *configured window*, not the real screen, to skip
+            // webcam work during the night regardless of a manual dev
+            // wake - see NightModeStore's own comment). This field is the
+            // ground truth any external caller (pi-dashboard, HA) needs to
+            // avoid redundant sleep/wake keyevents - added 2026-09-20 for
+            // the presence-based auto-sleep automation.
+            .put("screenAwake", powerManager.isInteractive)
     }
 
     // Continuous rotation, driven in code rather than baked into the

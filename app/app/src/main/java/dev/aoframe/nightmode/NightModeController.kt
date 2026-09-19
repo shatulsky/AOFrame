@@ -1,6 +1,7 @@
 package dev.aoframe.nightmode
 
 import android.content.Context
+import android.os.PowerManager
 import android.util.Log
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
@@ -36,7 +37,8 @@ class NightModeController(
     // interface, so MainActivity's call site stays untouched.
     private val today: () -> LocalDate = { LocalDate.now() },
     private val nowMinutes: () -> Int = { NightModeTiming.minutesOfDay(LocalTime.now()) },
-    private val runRootShell: (String) -> Unit = ::runRealRootShell
+    private val runRootShell: (String) -> Unit = ::runRealRootShell,
+    private val isScreenAwake: () -> Boolean = { realIsScreenAwake(context) }
 ) {
     private var lastSleepTriggeredDate: LocalDate? = null
     private var lastWakeTriggeredDate: LocalDate? = null
@@ -59,13 +61,25 @@ class NightModeController(
 
             val today = today()
             val nowMinutes = nowMinutes()
+            // Real screen-power state (android.os.PowerManager), not just
+            // the once-per-day date dedup below - an external actor
+            // (pi-dashboard's manual sleep/wake buttons, or the
+            // presence-based HA automation, both hitting this same device
+            // via ADB root keyevents) can already have put the screen in
+            // the target state before this scheduled tick runs. Checking
+            // first avoids firing a redundant keyevent - harmless since
+            // KEYCODE_SLEEP/WAKEUP are idempotent, but pointless work, and
+            // the whole point of this refactor (2026-09-20, see
+            // homeassistant/docs/automations.md's presence-based
+            // auto-sleep automation) is to stop doing pointless work.
+            val screenAwake = isScreenAwake()
 
             if (NightModeTiming.shouldTrigger(
                     nowMinutes, NightModeTiming.parseMinutesOfDay(config.sleepTime), today, lastSleepTriggeredDate
                 )
             ) {
                 lastSleepTriggeredDate = today
-                runRootShell("input keyevent KEYCODE_SLEEP")
+                if (screenAwake) runRootShell("input keyevent KEYCODE_SLEEP")
             }
 
             if (NightModeTiming.shouldTrigger(
@@ -73,7 +87,7 @@ class NightModeController(
                 )
             ) {
                 lastWakeTriggeredDate = today
-                runRootShell("input keyevent KEYCODE_WAKEUP")
+                if (!screenAwake) runRootShell("input keyevent KEYCODE_WAKEUP")
             }
         } catch (error: Exception) {
             // A malformed config (e.g. a bad time string from a future
@@ -92,3 +106,10 @@ private fun runRealRootShell(command: String) {
         Log.e(TAG, "Night-mode root command failed: $command", error)
     }
 }
+
+// Same PowerManager.isInteractive() check MainActivity.buildStatusJson()
+// exposes as /status's "screenAwake" field - kept as a free function
+// (not a Context extension) so it's trivially swappable via the
+// isScreenAwake constructor param above, same pattern as runRootShell.
+private fun realIsScreenAwake(context: Context): Boolean =
+    (context.getSystemService(Context.POWER_SERVICE) as PowerManager).isInteractive

@@ -115,6 +115,15 @@ Read-only. General device/library status:
   "cacheBytes": 256058869,
   "facesFound": 74,
   "facesNone": 28,
-  "facesPending": 0
+  "facesPending": 0,
+  "screenAwake": true
 }
 ```
+
+`screenAwake` reflects the display's real power state
+(`android.os.PowerManager.isInteractive()`), not the night-mode
+schedule's inferred window — a manual power toggle, an external
+sleep/wake call (e.g. from a home-automation integration), or the
+scheduled night-mode timer below are all reflected here immediately.
+Useful for any external caller that wants to skip a redundant
+sleep/wake call rather than blindly firing one.

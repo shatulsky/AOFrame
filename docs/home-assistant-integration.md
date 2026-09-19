@@ -134,6 +134,13 @@ into HA, wrap the `adb` call in whatever local script-runner integration
 you use to call host-side scripts from an automation — HA itself has no
 built-in ADB client.
 
+If you're calling this from a presence-based or other conditional
+automation, check `/status`'s `screenAwake` field first (see
+[`local-control-server-api.md`](local-control-server-api.md)) and skip
+the keyevent when the device is already in the target state — harmless
+either way since the keyevents are idempotent, but it saves a real ADB
+round-trip your automation doesn't need.
+
 ## Grouping into an Area
 
 Assign each new `sensor.frame_*`/`script.frame_*` entity to its own Area
