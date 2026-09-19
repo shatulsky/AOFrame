@@ -117,6 +117,28 @@ sleep window (not just become invisible), override `onPause`/`onResume`
 explicitly rather than relying on lifecycle-scoped coroutine cancellation
 alone.
 
+## Running work exactly once per real wake
+
+Sleep/wake isn't only driven by the schedule above — a manual action or
+an external trigger (a home-automation integration, say) can put the
+display to sleep or wake it at any time. Anything that should catch up
+immediately after a real wake (this app's own example: forcing a fresh
+webcam-clip capture rather than waiting for its own periodic cycle, so
+arriving home doesn't show footage from whenever the screen fell
+asleep) needs a "did we just wake up" signal, not a poll.
+
+`onResume()` is that signal for free, per the previous section — for a
+single foreground kiosk app it already correlates with the real display
+turning back on, regardless of what caused it. The only thing missing
+is debouncing: `onResume()` can also fire for reasons that aren't a
+"new" wake (a brief resume/pause cycle, cold start immediately after
+`onCreate()`), and repeating expensive work on every one of those would
+be wasteful. `WakeRefreshGate` (`wake/WakeRefreshGate.kt`) is a small,
+framework-agnostic debounce primitive for exactly this — plain Kotlin,
+no Android dependency, injectable clock for tests, reusable for any
+future "run this once per real wake" need beyond the one it currently
+backs.
+
 ## A production-build (`org.json`) gotcha worth knowing
 
 `JSONObject.optString(key, default)` returns the **literal string

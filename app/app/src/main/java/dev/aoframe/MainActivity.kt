@@ -41,6 +41,7 @@ import dev.aoframe.weather.WeatherSnapshot
 import dev.aoframe.webcam.WebcamClipSync
 import dev.aoframe.webcam.WebcamTestModeConfig
 import dev.aoframe.webcam.WebcamTestModeStore
+import dev.aoframe.wake.WakeRefreshGate
 import dev.aoframe.widgets.ClockFormatter
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -100,6 +101,9 @@ class MainActivity : ComponentActivity() {
     private var loadingSpinnerAnimator: ObjectAnimator? = null
     private var localControlServer: LocalControlServer? = null
     private var lastSyncAtMs: Long? = null
+    // Debounces onScreenWoke() against rapid repeated onResume() calls -
+    // see WakeRefreshGate's own comment.
+    private val webcamWakeRefreshGate = WakeRefreshGate()
 
     private val clockTick = object : Runnable {
         override fun run() {
@@ -194,6 +198,7 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         if (::slideshowRenderer.isInitialized) slideshowRenderer.resumeIfPaused()
+        if (webcamWakeRefreshGate.shouldFire()) onScreenWoke()
     }
 
     // Prev/next jump immediately (cancelling whatever timer was running).
@@ -273,14 +278,9 @@ class MainActivity : ComponentActivity() {
             .put("facesFound", faceStats.found)
             .put("facesNone", faceStats.none)
             .put("facesPending", faceStats.pending)
-            // Real display power state (android.os.PowerManager), not the
-            // night-mode schedule's inferred isWithinSleepWindowNow() -
-            // that one stays schedule-based on purpose (MainActivity's
-            // own syncAssets() keys off the *configured window*, not the
-            // real screen, to skip webcam work during the night
-            // regardless of a manual dev wake - see NightModeStore's own
-            // comment). This field is the ground truth any external
-            // caller needs to avoid firing a redundant sleep/wake action.
+            // Real display power state (android.os.PowerManager) - the
+            // ground truth any external caller needs to avoid firing a
+            // redundant sleep/wake action.
             .put("screenAwake", powerManager.isInteractive)
     }
 
@@ -533,22 +533,47 @@ class MainActivity : ComponentActivity() {
     // back off again by the time the capture finishes - no point applying
     // a webcam sync result to a display that's since moved on to normal
     // photos.
+    // Extracted from forceFreshWebcamCaptureInBackground() so
+    // onScreenWoke() below can reuse the same force-capture-and-wait
+    // step without duplicating it. Returns false (nothing to re-sync)
+    // on any failure - the gate being unreachable, or a cycle that
+    // never finishes within the poll ceiling.
+    private suspend fun forceFreshWebcamCaptureAndWait(): Boolean {
+        val sync = WebcamClipSync(this@MainActivity, assetCacheDatabase)
+        return try {
+            sync.forceRefreshOnPi()
+            var attempts = 0
+            while (attempts < WEBCAM_REFRESH_POLL_MAX_ATTEMPTS && sync.isCycleInProgress()) {
+                delay(WEBCAM_REFRESH_POLL_INTERVAL_MS)
+                attempts++
+            }
+            true
+        } catch (error: Exception) {
+            Log.w(TAG, "Forced webcam-gate refresh failed - staying on whatever's already cached", error)
+            false
+        }
+    }
+
     private fun forceFreshWebcamCaptureInBackground() {
         lifecycleScope.launch {
-            val sync = WebcamClipSync(this@MainActivity, assetCacheDatabase)
-            try {
-                sync.forceRefreshOnPi()
-                var attempts = 0
-                while (attempts < WEBCAM_REFRESH_POLL_MAX_ATTEMPTS && sync.isCycleInProgress()) {
-                    delay(WEBCAM_REFRESH_POLL_INTERVAL_MS)
-                    attempts++
-                }
-            } catch (error: Exception) {
-                Log.w(TAG, "Forced webcam-gate refresh failed - staying on whatever's already cached", error)
-                return@launch
-            }
+            if (!forceFreshWebcamCaptureAndWait()) return@launch
             if (WebcamTestModeStore.load(this@MainActivity).enabled) runBackgroundSync()
         }
+    }
+
+    // Extracted from refreshWebcamOnly() so onScreenWoke() below can
+    // reuse the same re-sync-and-splice step. Fetches the webcam gate's
+    // current clips and swaps them into whatever's currently on screen,
+    // never touching Immich or interrupting playback.
+    private suspend fun syncAndApplyFreshWebcamAssets() {
+        val freshWebcamAssets = try {
+            WebcamClipSync(this@MainActivity, assetCacheDatabase).sync()
+        } catch (error: Exception) {
+            Log.w(TAG, "Webcam clip sync failed", error)
+            return
+        }
+        val withoutOldWebcamAssets = slideshowRenderer.currentAssets().filterNot { it.id.startsWith("webcam-") }
+        slideshowRenderer.updateAssets(withoutOldWebcamAssets + freshWebcamAssets)
     }
 
     // POST /action/refresh-webcam lands here (an admin panel's
@@ -560,15 +585,25 @@ class MainActivity : ComponentActivity() {
     // current asset list rather than re-fetching Immich, so a normal
     // Immich resync's own cadence is untouched by this action.
     private fun refreshWebcamOnly() {
+        lifecycleScope.launch { syncAndApplyFreshWebcamAssets() }
+    }
+
+    // Fires once per real wake - webcamWakeRefreshGate debounces
+    // onResume(), which for this single foreground kiosk app (nothing
+    // else able to steal focus) already correlates with the display
+    // actually turning back on, see onResume()'s own comment -
+    // regardless of what caused it: the on-device night-mode timer, a
+    // manual sleep/wake action, a home-automation trigger, or anything
+    // else a future caller adds. Forces the webcam gate to capture a
+    // fresh clip per camera immediately rather than waiting for its own
+    // periodic cycle (which skips capturing entirely while the screen's
+    // off, so whatever's cached could be stale by however long the
+    // screen was off), then re-syncs so what's on screen reflects the
+    // current moment, not whenever the screen happened to fall asleep.
+    private fun onScreenWoke() {
         lifecycleScope.launch {
-            val freshWebcamAssets = try {
-                WebcamClipSync(this@MainActivity, assetCacheDatabase).sync()
-            } catch (error: Exception) {
-                Log.w(TAG, "Forced webcam refresh failed", error)
-                return@launch
-            }
-            val withoutOldWebcamAssets = slideshowRenderer.currentAssets().filterNot { it.id.startsWith("webcam-") }
-            slideshowRenderer.updateAssets(withoutOldWebcamAssets + freshWebcamAssets)
+            if (!forceFreshWebcamCaptureAndWait()) return@launch
+            syncAndApplyFreshWebcamAssets()
         }
     }
 
@@ -675,21 +710,24 @@ class MainActivity : ComponentActivity() {
         return immichAssets + syncWebcamAssets()
     }
 
-    // Skip re-downloading webcam clips during the scheduled night-mode
-    // window - nothing's watching while the screen's asleep, so there's
-    // no point spending frame bandwidth/flash writes on clips that would
-    // just get overwritten again before anyone sees them (see
-    // NightModeStore.isWithinSleepWindowNow()'s comment). Scheduled-
-    // window based, not actual display power state - a manual wake during
-    // the window (e.g. for dev work) doesn't resume this. Manual/explicit
-    // paths (webcamOnly mode above, refreshWebcamOnly(),
-    // forceFreshWebcamCaptureInBackground()) deliberately bypass this - an
-    // explicit action means the caller already knows what they're asking
-    // for. Shared by both the Immich and local photo-source paths above -
-    // webcam clips are a fully independent pipeline regardless of where
-    // the rest of the slideshow's photos come from.
+    // Skip re-downloading webcam clips while the screen's actually
+    // asleep - nothing's watching, so there's no point spending frame
+    // bandwidth/flash writes on clips that would just get overwritten
+    // again before anyone sees them. Checks the real display power
+    // state (same android.os.PowerManager read buildStatusJson()
+    // exposes as /status's screenAwake), not a night-mode schedule
+    // window - a sleep triggered any other way (a manual action, a
+    // home-automation trigger) is covered too, not just the configured
+    // hours. Manual/explicit paths (webcamOnly mode above,
+    // refreshWebcamOnly(), forceFreshWebcamCaptureInBackground())
+    // deliberately bypass this - an explicit action means the caller
+    // already knows what they're asking for. Shared by both the Immich
+    // and local photo-source paths above - webcam clips are a fully
+    // independent pipeline regardless of where the rest of the
+    // slideshow's photos come from.
     private suspend fun syncWebcamAssets(): List<ImmichAsset> {
-        if (NightModeStore.isWithinSleepWindowNow(this@MainActivity)) return emptyList()
+        val powerManager = getSystemService(POWER_SERVICE) as PowerManager
+        if (!powerManager.isInteractive) return emptyList()
         // Own try/catch, independent of the photo-source sync above - a
         // webcam-side failure (manifest unreachable, pi-video-gate down)
         // must never fail the whole sync, same "degrade gracefully"

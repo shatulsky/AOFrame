@@ -6,7 +6,6 @@ import org.json.JSONObject
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import java.io.File
@@ -67,22 +66,6 @@ class NightModeStoreTest {
         val parsed = NightModeConfig.fromJson(JSONObject())
 
         assertEquals(NightModeConfig(), parsed)
-    }
-
-    @Test
-    fun isWithinSleepWindowNowIsFalseWhenDisabled() {
-        NightModeStore.save(context, NightModeConfig(enabled = false))
-
-        assertFalse(NightModeStore.isWithinSleepWindowNow(context))
-    }
-
-    @Test
-    fun isWithinSleepWindowNowIsTrueForAnAllDayWindow() {
-        // 00:00-23:59 always contains "now", regardless of when the test
-        // runs - avoids a flaky assertion tied to the real wall clock.
-        NightModeStore.save(context, NightModeConfig(enabled = true, sleepTime = "00:00", wakeTime = "23:59"))
-
-        assertTrue(NightModeStore.isWithinSleepWindowNow(context))
     }
 
     @Test

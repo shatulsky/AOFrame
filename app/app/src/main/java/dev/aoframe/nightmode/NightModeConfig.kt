@@ -5,7 +5,6 @@ import android.util.Log
 import dev.aoframe.backup.ConfigBackupClient
 import org.json.JSONObject
 import java.io.File
-import java.time.LocalTime
 
 private const val TAG = "NightModeStore"
 
@@ -52,24 +51,6 @@ object NightModeStore {
 
     fun save(context: Context, config: NightModeConfig) {
         File(context.filesDir, FILE_NAME).writeText(config.toJson().toString())
-    }
-
-    // Scheduled-window check (config-based, not the display's actual
-    // Wakefulness state - see NightModeTiming.isWithinWindow()'s own
-    // comment) - used by MainActivity.syncAssets() to skip downloading
-    // fresh webcam clips nobody's watching during the night window, same
-    // reasoning and mechanism as pi-video-gate's own isFrameAsleep() skip
-    // on the capture side (server.js). A manual wake for dev/testing
-    // doesn't change this - see the optimization's own scoping discussion.
-    fun isWithinSleepWindowNow(context: Context): Boolean {
-        val config = load(context)
-        if (!config.enabled) return false
-        val nowMinutes = NightModeTiming.minutesOfDay(LocalTime.now())
-        return NightModeTiming.isWithinWindow(
-            nowMinutes,
-            NightModeTiming.parseMinutesOfDay(config.sleepTime),
-            NightModeTiming.parseMinutesOfDay(config.wakeTime)
-        )
     }
 
     // Same restore-on-missing-file mechanism as CountdownStore's own

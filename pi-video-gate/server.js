@@ -658,9 +658,10 @@ app.get("/webcam/status", (req, res) => {
 	});
 });
 
-// Admin panel's "Force update" button - triggers an immediate
+// Admin panel's "Force update" button, and the frame's own post-wake
+// refresh (WebcamClipSync.forceRefreshOnPi()) - triggers an immediate
 // capture cycle instead of waiting for the next 30-min tick, bypassing
-// the night-mode skip (see captureWebcamCycle()'s own comment on `force`).
+// the asleep skip (see captureWebcamCycle()'s own comment on `force`).
 // Fire-and-forget: a full cycle can take a minute or more with several
 // cameras, so this acks immediately rather than making the caller's HTTP client block.
 app.post("/webcam/refresh", (req, res) => {
