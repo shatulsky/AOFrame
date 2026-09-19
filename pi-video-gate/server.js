@@ -487,45 +487,35 @@ function probeDurationSeconds(filePath) {
 	});
 }
 
-function minutesOfDay(date) {
-	return date.getHours() * 60 + date.getMinutes();
-}
-
-function parseMinutesOfDay(hhmm) {
-	const [hours, mins] = hhmm.split(":").map(Number);
-	return hours * 60 + mins;
-}
-
-// Range check, not an edge trigger - unlike the app's own
-// nightmode/NightModeTiming.kt (which only needs to fire once at the
-// instant sleep/wake happens), this job runs on its own 30-min timer and
-// needs to know "is right now inside the window" on every tick. Handles
-// a window crossing midnight (e.g. sleep 23:00/wake 07:00).
-function isWithinSleepWindow(nowMinutes, sleepMinutes, wakeMinutes) {
-	if (sleepMinutes === wakeMinutes) return false;
-	if (sleepMinutes < wakeMinutes) {
-		return nowMinutes >= sleepMinutes && nowMinutes < wakeMinutes;
-	}
-	return nowMinutes >= sleepMinutes || nowMinutes < wakeMinutes;
-}
-
-// Reads the frame's LocalControlServer (see the app's own
-// nightmode/NightModeConfig.kt), read-only, never posts. Fails OPEN
-// (assume "not asleep") on any error, including frameControlUrl not
-// being configured at all - a transient control-server hiccup, or the
-// feature simply not being set up, must never silently stop clip
-// refreshing.
+// Reads the frame's LocalControlServer /status (LocalControlServer.kt,
+// MainActivity.buildStatusJson()'s screenAwake field, added 2026-09-20),
+// read-only, never posts. Fails OPEN (assume "not asleep") on any error,
+// including frameControlUrl not being configured at all - a transient
+// control-server hiccup, or the feature simply not being set up, must
+// never silently stop clip refreshing.
+//
+// Switched 2026-09-20 from checking the night-mode *schedule* window
+// (GET /action/night-mode's sleepTime/wakeTime, a range check against
+// the current clock time - the removed isWithinSleepWindow/
+// minutesOfDay/parseMinutesOfDay helpers) to checking the frame's real
+// screen-power state directly. The schedule-only check missed the
+// presence-based auto-sleep automation entirely (homeassistant/docs/
+// automations.md) - a frame put to sleep at 2pm because everyone left
+// the house is outside any configured night window, so the old check
+// kept capturing webcam clips into a frame that wasn't going to show
+// them until it woke back up. Real screenAwake is the actual signal
+// this function has always wanted ("is anyone going to see this clip
+// soon"), regardless of *why* the screen is off - schedule, presence,
+// or a manual sleep-now button all now correctly skip a capture cycle.
 async function isFrameAsleep() {
 	if (!FRAME_CONTROL_URL) return false;
 	try {
-		const response = await fetch(`${FRAME_CONTROL_URL}/action/night-mode`);
+		const response = await fetch(`${FRAME_CONTROL_URL}/status`);
 		if (!response.ok) return false;
-		const config = await response.json();
-		if (!config.enabled) return false;
-		const now = minutesOfDay(new Date());
-		return isWithinSleepWindow(now, parseMinutesOfDay(config.sleepTime), parseMinutesOfDay(config.wakeTime));
+		const status = await response.json();
+		return status.screenAwake === false;
 	} catch (error) {
-		console.warn(`[webcam] could not reach frame's night-mode status - assuming awake: ${error.message}`);
+		console.warn(`[webcam] could not reach frame's status - assuming awake: ${error.message}`);
 		return false;
 	}
 }

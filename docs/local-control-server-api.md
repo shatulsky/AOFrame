@@ -127,3 +127,15 @@ sleep/wake call (e.g. from a home-automation integration), or the
 scheduled night-mode timer below are all reflected here immediately.
 Useful for any external caller that wants to skip a redundant
 sleep/wake call rather than blindly firing one.
+
+**`pi-video-gate`'s own webcam-capture loop reads this field too**
+(`isFrameAsleep()` in `pi-video-gate/server.js`, polled every 30
+minutes) to skip capturing a fresh webcam clip while nobody's going to
+see it. Originally checked the night-mode *schedule* window instead
+(`GET /action/night-mode`'s `sleepTime`/`wakeTime`) — switched
+2026-09-20 because that missed any sleep triggered outside the
+configured window (a presence-based automation putting the display to
+sleep mid-afternoon, for instance): the schedule check would keep
+capturing into a screen that was actually off. `screenAwake` is the
+signal this was always really after, regardless of *why* the screen is
+off.
