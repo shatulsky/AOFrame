@@ -185,17 +185,29 @@ class WebcamClipSync(
     // manifest carries no timestamp to compare against, and files are
     // small (a few MB) at a ~30-min cadence, so conditional-download
     // logic isn't worth the added complexity.
+    //
+    // Downloads into a per-id ".tmp" file first and only renames it onto
+    // `destination` once the transfer fully succeeds (mirrors server.js's
+    // own .tmp.mp4 + renameSync pattern on the gate side). Without this,
+    // writing straight into `destination` truncates-and-rewrites the exact
+    // file SlideshowRenderer may currently have open for playback/preload,
+    // which showed up as ~30s black screens mid-rotation.
     private fun downloadClip(id: String) {
         val assetId = "webcam-$id"
         val destination = File(cacheDir, "$assetId-video")
+        val tempFile = File(cacheDir, "$assetId-video.tmp")
         val request = Request.Builder().url("$videoGateBaseUrl/webcam/clip/$id").get().build()
         http.newCall(request).execute().use { response ->
             if (!response.isSuccessful) throw IOException("webcam clip '$id' fetch failed: ${response.code}")
             val responseBody = response.body ?: throw IOException("empty body for webcam clip '$id'")
-            destination.parentFile?.mkdirs()
+            tempFile.parentFile?.mkdirs()
             responseBody.byteStream().use { input ->
-                destination.outputStream().use { output -> input.copyTo(output) }
+                tempFile.outputStream().use { output -> input.copyTo(output) }
             }
+        }
+        if (!tempFile.renameTo(destination)) {
+            tempFile.delete()
+            throw IOException("failed to move downloaded webcam clip '$id' into place")
         }
         db.recordCachedFile(assetId, "VIDEO", destination.absolutePath, destination.length())
         WebcamSyncState.recordSynced(context, id)

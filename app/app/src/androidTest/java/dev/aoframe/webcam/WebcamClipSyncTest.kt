@@ -104,6 +104,41 @@ class WebcamClipSyncTest {
         assertEquals(listOf("webcam-cam-ok"), assets.map { it.id })
     }
 
+    // Regression test for the ~30s black-screen bug: a re-sync that fails
+    // partway through downloading a clip must not touch the previously
+    // downloaded file that SlideshowRenderer may currently be
+    // playing/preloading from. Guards downloadClip()'s temp-file+rename
+    // approach - a straight overwrite-in-place would have truncated
+    // `destination` before the failure was even known.
+    @Test
+    fun aFailedRedownloadLeavesThePreviouslyCachedClipFileIntact() = runBlocking {
+        server.dispatcher = object : Dispatcher() {
+            override fun dispatch(request: RecordedRequest): MockResponse = when (request.path) {
+                "/webcam/clips" -> MockResponse().setBody("""{"clips":["cam-a"]}""")
+                "/webcam/clip/cam-a" -> MockResponse().setBody("clip-a-original-bytes")
+                else -> MockResponse().setResponseCode(404)
+            }
+        }
+        val syncer = sync()
+        syncer.sync()
+        val path = db.cachedFilePath("webcam-cam-a", "VIDEO")
+        assertTrue(path != null)
+        assertEquals("clip-a-original-bytes", java.io.File(path!!).readText())
+
+        server.dispatcher = object : Dispatcher() {
+            override fun dispatch(request: RecordedRequest): MockResponse = when (request.path) {
+                "/webcam/clips" -> MockResponse().setBody("""{"clips":["cam-a"]}""")
+                "/webcam/clip/cam-a" -> MockResponse().setResponseCode(500)
+                else -> MockResponse().setResponseCode(404)
+            }
+        }
+        syncer.sync()
+
+        // Still the original bytes, in the same place - never truncated
+        // or left partially written by the failed re-download attempt.
+        assertEquals("clip-a-original-bytes", java.io.File(path).readText())
+    }
+
     // WebcamSyncState backs the admin panel's "last synced to frame"
     // column - confirms downloadClip() actually records it, not just
     // recordCachedFile().
