@@ -96,7 +96,11 @@ Standalone sidecar service, sitting between Immich and the frame. Three jobs:
   http://<host>:8090/webcam/clip/<id>` should download a playable ~30s
   clip (`ffprobe test.mp4`). Point one camera's `streamUrl` at something invalid
   and confirm its id drops out of `/webcam/clips` after `MAX_STALE` (3h) while
-  the others keep refreshing normally. If `frameControlUrl` is configured,
+  the others keep refreshing normally. The log shows one short `grab failed
+  (N in a row)` warning per failed cycle. The 3rd consecutive failure of the
+  same camera logs the full ffmpeg output as `[webcam] ERROR <id>: ...` lines
+  (once, for log-based error alerts). A later successful grab resets the
+  count. If `frameControlUrl` is configured,
   enable night mode with a wide sleep window and confirm the log shows `frame
   is asleep - skipping this cycle entirely` with no `ffmpeg`/webcam log lines
   during that window. `curl -X

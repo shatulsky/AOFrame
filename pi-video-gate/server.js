@@ -538,6 +538,32 @@ function captureWebcam(streamUrl, destPath) {
 	});
 }
 
+// Public streams drop out for a cycle now and then and recover on their
+// own, so a single failed grab only logs one short warning line (no
+// ffmpeg output, none of the words a log-based error alert would match).
+// Only the WEBCAM_FAILURE_ALERT_AFTER-th consecutive failure of the same
+// camera logs at error level - every line of ffmpeg's output, each
+// prefixed with "ERROR", so a line-count alert (e.g. "5+ error lines in
+// 5 minutes") reliably fires even when ffmpeg was killed by the timeout
+// and printed no error of its own. Later consecutive failures go back to
+// one warning line, so a permanently dead stream alerts once, not every
+// cycle. Counts are in memory only - a restart starts them from zero.
+const WEBCAM_FAILURE_ALERT_AFTER = 3;
+const webcamConsecutiveFailures = new Map();
+
+function logWebcamFailure(camId, error) {
+	const failures = (webcamConsecutiveFailures.get(camId) || 0) + 1;
+	webcamConsecutiveFailures.set(camId, failures);
+	if (failures === WEBCAM_FAILURE_ALERT_AFTER) {
+		console.error(`[webcam] ERROR ${camId} grab failed ${failures} cycles in a row - keeping previous clip if any. ffmpeg output:`);
+		for (const line of String(error.message).split("\n")) {
+			if (line.trim()) console.error(`[webcam] ERROR ${camId}: ${line}`);
+		}
+	} else {
+		console.warn(`[webcam] ${camId} grab failed (${failures} in a row) - keeping previous clip if any`);
+	}
+}
+
 async function captureOneWebcam(cam) {
 	const tmpPath = path.join(WEBCAM_DIR, `${cam.id}.tmp.mp4`);
 	const finalPath = path.join(WEBCAM_DIR, `${cam.id}.mp4`);
@@ -555,9 +581,11 @@ async function captureOneWebcam(cam) {
 		}
 		fs.renameSync(tmpPath, finalPath);
 		recordWebcamSuccess(cam.id, durationSec);
-		console.log(`[webcam] ${cam.id} refreshed${durationSec ? ` (${durationSec.toFixed(1)}s)` : ""}`);
+		const priorFailures = webcamConsecutiveFailures.get(cam.id) || 0;
+		webcamConsecutiveFailures.delete(cam.id);
+		console.log(`[webcam] ${cam.id} refreshed${durationSec ? ` (${durationSec.toFixed(1)}s)` : ""}${priorFailures ? ` after ${priorFailures} failed cycle(s)` : ""}`);
 	} catch (error) {
-		console.warn(`[webcam] ${cam.id} grab failed - keeping previous clip if any: ${error.message}`);
+		logWebcamFailure(cam.id, error);
 		try { fs.unlinkSync(tmpPath); } catch {}
 	}
 }
