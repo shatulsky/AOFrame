@@ -155,8 +155,12 @@ clips — works identically to Immich mode.
   reference hardware this was developed against; worth trying if your
   frame's SoC throttles under sustained load (see
   [`hardware-and-root.md`](hardware-and-root.md)).
+- [`../scripts/fixed-wifi-mac/`](../scripts/fixed-wifi-mac/) — keeps the
+  Wi-Fi MAC address the same across reboots on frames whose driver
+  otherwise picks a random one, so router-side reservations and per-device
+  mesh settings keep working.
 
-Both are optional, independent, and fully reversible — see each one's own
+All are optional, independent, and fully reversible — see each one's own
 `INSTALL.md`.
 
 ## Where to go next

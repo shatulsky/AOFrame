@@ -139,9 +139,18 @@ If your frame's Wi-Fi MAC address isn't stable across reboots (check via
 `adb shell ip addr show wlan0` across a couple of reboots — some budget
 Wi-Fi drivers don't have a real MAC burned into NVRAM and generate a
 pseudo-random one each boot), a router-side DHCP reservation won't be
-reliable. Setting a **static IP directly on the device** (via the native
-Wi-Fi settings screen above, not Frameo's own menu) avoids that entirely:
-tap the network → Advanced options → IP settings → Static.
+reliable. Two fixes, which also work together:
+
+- Set a **static IP directly on the device** (via the native Wi-Fi
+  settings screen above, not Frameo's own menu): tap the network →
+  Advanced options → IP settings → Static.
+- **Fix the MAC address itself.** On the reference unit the Realtek driver
+  reads a MAC address from `/data/wifimac.txt` before it falls back to a
+  random one, so one text file makes it stable. See
+  [`../scripts/fixed-wifi-mac/`](../scripts/fixed-wifi-mac/). This also
+  keeps per-device router settings (DHCP reservation, mesh band/access
+  point/roaming) attached to the frame across reboots, which a static IP
+  alone does not.
 
 See [`../scripts/adbtcp/`](../scripts/adbtcp/) for making network ADB
 (port 5555) itself survive reboots without a static IP being strictly
