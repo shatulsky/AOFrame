@@ -44,7 +44,7 @@ for the measured before/after.
 | [`app/`](app/) | The Android app itself (Kotlin, plain Views, minSdk 27) |
 | [`pi-video-gate/`](pi-video-gate/) | Optional sidecar: fixes a video-readiness race and adds an fps cap Immich itself doesn't support |
 | [`server/`](server/) | Optional reference admin server: remote-editing dashboard + the CRUD photo API for local mode |
-| [`scripts/`](scripts/) | Optional on-device tweaks (persistent network ADB, a CPU governor switch to reduce thermal throttling) |
+| [`scripts/`](scripts/) | Optional on-device tweaks (persistent network ADB, a CPU governor switch to reduce thermal throttling, a fixed Wi-Fi MAC address) |
 | [`docs/`](docs/) | Setup guide, hardware/root notes, API references, architecture notes |
 
 ## Quick start
