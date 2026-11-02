@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Deploys pi-video-gate/ (server.js, package.json, Dockerfile,
+# Deploys pi-video-gate/ (server.js, package.json, package-lock.json, Dockerfile,
 # docker-compose.yml) to the host's ~/pi-video-gate directory. A
 # sha256-diff-and-restart pattern - only
 # copies what changed, only rebuilds/restarts the container if something
@@ -9,6 +9,9 @@
 # bind-mounted ~/pi-video-gate tree rather than being COPYed into the
 # image build (see Dockerfile/docker-compose.yml's header comments), so
 # the npm-install step below matches a plain non-Docker deployment too.
+# It uses `npm ci`, so the host installs exactly the versions in the
+# committed package-lock.json, not the newest version in each ^ range,
+# and skips install scripts (no dependency here needs one).
 #
 # config.json is NEVER touched by this script (contains the Immich API
 # key and other secrets) - create it once by hand from
@@ -36,12 +39,12 @@ REMOTE_DIR="pi-video-gate"
 SSH_OPTS=(-o StrictHostKeyChecking=accept-new)
 [ -n "$DEPLOY_SSH_KEY" ] && SSH_OPTS=(-i "$DEPLOY_SSH_KEY" "${SSH_OPTS[@]}")
 
-FILES=("server.js:server.js" "package.json:package.json" "Dockerfile:Dockerfile" "docker-compose.yml:docker-compose.yml" ".dockerignore:.dockerignore")
+FILES=("server.js:server.js" "package.json:package.json" "package-lock.json:package-lock.json" "Dockerfile:Dockerfile" "docker-compose.yml:docker-compose.yml" ".dockerignore:.dockerignore")
 
 echo "Checking ${#FILES[@]} file(s) against the Pi..."
 REMOTE_HASHES="$(ssh "${SSH_OPTS[@]}" "$PI_HOST" "
 	cd $REMOTE_DIR 2>/dev/null || exit 0
-	find server.js package.json Dockerfile docker-compose.yml .dockerignore -type f 2>/dev/null -exec sha256sum {} \;
+	find server.js package.json package-lock.json Dockerfile docker-compose.yml .dockerignore -type f 2>/dev/null -exec sha256sum {} \;
 	true
 ")"
 
@@ -61,13 +64,15 @@ for entry in "${FILES[@]}"; do
 	ssh "${SSH_OPTS[@]}" "$PI_HOST" "mkdir -p $REMOTE_DIR/$(dirname "$remote_path")"
 	scp "${SSH_OPTS[@]}" "$local_path" "$PI_HOST:$REMOTE_DIR/$remote_path" >/dev/null
 	changed=1
-	[ "$local_path" == "package.json" ] && package_json_changed=1
+	case "$local_path" in
+		package.json|package-lock.json) package_json_changed=1 ;;
+	esac
 done
 
 NODE_MODULES_EXISTS="$(ssh "${SSH_OPTS[@]}" "$PI_HOST" "[ -d $REMOTE_DIR/node_modules ] && echo yes || echo no")"
 if [ "$package_json_changed" -eq 1 ] || [ "$NODE_MODULES_EXISTS" == "no" ]; then
-	echo "Running npm install on the remote host..."
-	ssh "${SSH_OPTS[@]}" "$PI_HOST" "cd $REMOTE_DIR && npm install --omit=dev" >/dev/null
+	echo "Running npm ci on the remote host..."
+	ssh "${SSH_OPTS[@]}" "$PI_HOST" "cd $REMOTE_DIR && npm ci --omit=dev --ignore-scripts" >/dev/null
 	changed=1
 fi
 

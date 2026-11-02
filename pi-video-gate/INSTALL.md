@@ -44,10 +44,11 @@ Standalone sidecar service, sitting between Immich and the frame. Three jobs:
    `deployHost`/`deploySshKey`).
 2. If deploying to a remote host over SSH, run `./deploy.sh` (reads
    `deployHost`/`deploySshKey` from config.json - see that script's own header
-   comment). It copies the code, runs `npm install` if needed, and warns if
+   comment). It copies the code, runs `npm ci` (exact versions from the committed
+   `package-lock.json`, install scripts skipped) if needed, and warns if
    `config.json` isn't present on the remote host yet (it never copies
    `config.json` itself, since it's a secret). Otherwise, copy the directory
-   over by whatever means you prefer and run `npm install` there directly.
+   over by whatever means you prefer and run `npm ci --omit=dev --ignore-scripts` there directly.
 3. Build and start the container (one-time; `deploy.sh` re-runs this
    automatically on later code changes):
    ```
