@@ -10,5 +10,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 		ca-certificates \
 	&& rm -rf /var/lib/apt/lists/*
 
+# Node runs the app; npm is not used at run time (npm ci runs on the host).
+# Remove it: the npm in node:22-slim carries the vulnscan findings.
+RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx
+
 WORKDIR /home/pi/pi-video-gate
 CMD ["node", "server.js"]
