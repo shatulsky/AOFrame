@@ -11,6 +11,9 @@ services:
   pi-video-gate:
     build: .
     container_name: pi-video-gate
+    # A process in the container cannot gain more privileges than it started with.
+    security_opt:
+      - no-new-privileges:true
     network_mode: host
     restart: unless-stopped
     volumes:
