@@ -101,6 +101,24 @@ Read-only. Per-camera "last synced to this device" timestamps:
 { "front-porch": 1735689600000, "backyard": 1735689612000 }
 ```
 
+## `GET`/`POST /action/live-view`
+
+Shows a live RTSP camera stream (for example a go2rtc restream) full
+screen on the frame. The stream address is `liveViewUrl` in
+`immich-secrets.json`. It can hold camera credentials, so keep it in
+config only. The slideshow pauses while the view is open and starts
+again when the view closes. The view closes by itself after 5 minutes,
+when the screen sleeps, or when someone taps the on-screen live-view
+button. That button shows only when `liveViewUrl` is set.
+
+`POST` body: `{ "enabled": true }` opens the view, `{ "enabled": false }`
+closes it. A start with no `liveViewUrl` returns `409` and
+`{"status": "not-configured"}`. Both methods return the current state:
+
+```json
+{ "configured": true, "active": true }
+```
+
 ## `GET /status`
 
 Read-only. General device/library status:

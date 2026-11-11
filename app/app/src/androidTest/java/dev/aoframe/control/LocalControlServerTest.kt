@@ -48,6 +48,8 @@ class LocalControlServerTest {
     private var immichWebhookCalls = AtomicInteger(0)
     private var refreshWebcamCalls = AtomicInteger(0)
     private var webcamTestModeChangedCalls = AtomicInteger(0)
+    private val liveViewRequests = java.util.concurrent.CopyOnWriteArrayList<Boolean>()
+    @Volatile private var liveViewConfigured = true
 
     private lateinit var server: LocalControlServer
 
@@ -64,6 +66,8 @@ class LocalControlServerTest {
             onImmichWebhook = { immichWebhookCalls.incrementAndGet() },
             onRefreshWebcamRequested = { refreshWebcamCalls.incrementAndGet() },
             onWebcamTestModeChanged = { webcamTestModeChangedCalls.incrementAndGet() },
+            onLiveViewRequested = { enable -> liveViewRequests.add(enable); liveViewConfigured },
+            liveViewStatusProvider = { JSONObject().put("configured", liveViewConfigured).put("active", false) },
             statusProvider = { JSONObject().put("ok", true) }
         )
         server.start()
@@ -192,5 +196,33 @@ class LocalControlServerTest {
     fun immichWebhookRejectsGet() {
         assertFalse(get("/action/immich-webhook").isSuccessful)
         assertEquals(405, get("/action/immich-webhook").code)
+    }
+
+    @Test
+    fun liveViewPostForwardsTheRequestAndReturnsStatus() {
+        val response = post("/action/live-view", """{"enabled": true}""")
+
+        assertEquals(200, response.code)
+        assertTrue(JSONObject(response.body!!.string()).getBoolean("configured"))
+        assertEquals(listOf(true), liveViewRequests.toList())
+    }
+
+    @Test
+    fun liveViewStartWithoutConfigAnswers409() {
+        liveViewConfigured = false
+
+        val response = post("/action/live-view", """{"enabled": true}""")
+
+        assertEquals(409, response.code)
+        assertEquals("not-configured", JSONObject(response.body!!.string()).getString("status"))
+    }
+
+    @Test
+    fun liveViewGetReportsStatusWithoutInvokingTheCallback() {
+        val json = JSONObject(get("/action/live-view").body!!.string())
+
+        assertTrue(json.has("configured"))
+        assertFalse(json.getBoolean("active"))
+        assertTrue(liveViewRequests.isEmpty())
     }
 }

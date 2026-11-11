@@ -106,6 +106,11 @@ device.
   server's dashboard, see step 5) once the app is running.
 - **Night mode** (scheduled sleep/wake): off by default, same
   config-endpoint pattern as countdown.
+- **Live camera view**: off unless `"liveViewUrl"` is set to an
+  `rtsp://` address in `immich-secrets.json`. Then the frame shows a
+  live-view button, and `POST /action/live-view` opens the view from
+  outside (see the control server API doc). Use a low-resolution stream:
+  the frame's SoC is small.
 - **Locale**: defaults to English. Set `"locale"` to a BCP 47 tag (e.g.
   `"uk"`) in `immich-secrets.json` for a supported translation, or leave
   it unset/unrecognized to fall back to English automatically.

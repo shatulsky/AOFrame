@@ -30,6 +30,7 @@ import dev.aoframe.immich.ImmichClient
 import dev.aoframe.immich.ImmichSecretsStore
 import dev.aoframe.localsource.LocalAssetSync
 import dev.aoframe.localsource.LocalPhotoClient
+import dev.aoframe.liveview.LiveViewController
 import dev.aoframe.locale.AppLocale
 import dev.aoframe.nightmode.NightModeController
 import dev.aoframe.nightmode.NightModeStore
@@ -100,6 +101,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var loadingOverlay: FrameLayout
     private var loadingSpinnerAnimator: ObjectAnimator? = null
     private var localControlServer: LocalControlServer? = null
+    private lateinit var liveViewController: LiveViewController
     private var lastSyncAtMs: Long? = null
     // Snapshot of whatever non-webcam assets were on screen right before
     // switching into webcam-only mode - see toggleWebcamOnlyMode()'s own
@@ -154,6 +156,17 @@ class MainActivity : ComponentActivity() {
             scope = lifecycleScope
         )
 
+        // Live camera view: pauses the slideshow while it is open and
+        // brings it back when it closes. The address is read from config
+        // each time, so editing the config file needs no app restart.
+        liveViewController = LiveViewController(
+            context = this,
+            playerView = findViewById<PlayerView>(R.id.playerViewLive),
+            urlProvider = { ImmichSecretsStore.load(this)?.liveViewUrl },
+            onStarted = { slideshowRenderer.pause() },
+            onStopped = { slideshowRenderer.resumeIfPaused() }
+        )
+
         loadingOverlay = findViewById(R.id.loadingOverlay)
         startLoadingSpinner()
         setUpControlButtons()
@@ -196,6 +209,9 @@ class MainActivity : ComponentActivity() {
     // races, and there's nothing to pause yet in that case.
     override fun onPause() {
         super.onPause()
+        // Close live view first: its stop() resumes the slideshow, and
+        // the pause() right below then pauses it again for the sleeping screen.
+        if (::liveViewController.isInitialized) liveViewController.stop()
         if (::slideshowRenderer.isInitialized) slideshowRenderer.pause()
     }
 
@@ -213,6 +229,14 @@ class MainActivity : ComponentActivity() {
         findViewById<ImageButton>(R.id.controlPreviousButton).setOnClickListener { slideshowRenderer.goToPrevious() }
         findViewById<ImageButton>(R.id.controlNextButton).setOnClickListener { slideshowRenderer.goToNext() }
         findViewById<ImageButton>(R.id.controlWebcamOnlyButton).setOnClickListener { toggleWebcamOnlyMode() }
+        // Live view button shows only when a stream address is configured.
+        // A tap while a view is open closes it. The clock and controls sit
+        // above the live picture, so the button stays reachable.
+        val liveViewButton = findViewById<ImageButton>(R.id.controlLiveViewButton)
+        if (liveViewController.isConfigured) liveViewButton.visibility = View.VISIBLE
+        liveViewButton.setOnClickListener {
+            if (liveViewController.isActive) liveViewController.stop() else liveViewController.start()
+        }
         lifecycleScope.launch { updateWebcamOnlyButtonAppearance() }
     }
 
@@ -257,12 +281,32 @@ class MainActivity : ComponentActivity() {
                 onImmichWebhook = ::triggerBackgroundSync,
                 onRefreshWebcamRequested = ::refreshWebcamOnly,
                 onWebcamTestModeChanged = ::refreshSlideshow,
+                onLiveViewRequested = ::requestLiveView,
+                liveViewStatusProvider = ::buildLiveViewStatusJson,
                 statusProvider = ::buildStatusJson
             ).apply { start() }
         } catch (error: Exception) {
             Log.e(TAG, "Failed to start local control server", error)
         }
     }
+
+    // Backs POST /action/live-view. Called from NanoHTTPD's worker
+    // thread, so the player work is posted to the main thread. Returns
+    // false only for a start with no usable address configured.
+    private fun requestLiveView(enable: Boolean): Boolean {
+        if (!enable) {
+            handler.post { liveViewController.stop() }
+            return true
+        }
+        if (!liveViewController.isConfigured) return false
+        handler.post { liveViewController.start() }
+        return true
+    }
+
+    // Backs GET /action/live-view. Reads two plain flags, safe from any thread.
+    private fun buildLiveViewStatusJson(): JSONObject = JSONObject()
+        .put("configured", liveViewController.isConfigured)
+        .put("active", liveViewController.isActive)
 
     // Backs GET /status - real numbers from the manifest, not estimates.
     // Called from NanoHTTPD's own worker thread, not the main thread -

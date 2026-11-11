@@ -35,14 +35,20 @@ data class ImmichSecrets(
     // display text. Defaults to English when unset or unrecognized -
     // see AppLocale for the languages with dedicated translations vs.
     // the generic fallback everything else gets.
-    val locale: String? = null
+    val locale: String? = null,
+    // RTSP address of the live camera view (for example a go2rtc
+    // restream). Null when unset, which hides the on-screen button and
+    // makes the live-view action report "not configured". Config only:
+    // it can hold camera credentials, so it never goes in source.
+    val liveViewUrl: String? = null
 )
 
 /**
  * Loads `{"baseUrl": "...", "apiKey": "...", "photoSource": "immich"|"local",
  * "localServerBaseUrl": "...", "videoGateBaseUrl": "...",
  * "piBaseUrl": "...", "weatherLatitude": ..., "weatherLongitude": ...,
- * "weatherSeaLatitude": ..., "weatherSeaLongitude": ...}` (everything
+ * "weatherSeaLatitude": ..., "weatherSeaLongitude": ...,
+ * "liveViewUrl": "rtsp://..."}` (everything
  * optional - `baseUrl`/`apiKey` only matter when `photoSource` is
  * "immich", the default) from the app's own internal storage. This file is
  * gitignored - copy `immich-secrets.example.json`
@@ -78,7 +84,8 @@ object ImmichSecretsStore {
                 weatherLongitude = json.optDouble("weatherLongitude").takeUnless { it.isNaN() },
                 weatherSeaLatitude = json.optDouble("weatherSeaLatitude").takeUnless { it.isNaN() },
                 weatherSeaLongitude = json.optDouble("weatherSeaLongitude").takeUnless { it.isNaN() },
-                locale = json.optString("locale").ifBlank { null }
+                locale = json.optString("locale").ifBlank { null },
+                liveViewUrl = json.optString("liveViewUrl").ifBlank { null }
             )
         } catch (error: Exception) {
             null

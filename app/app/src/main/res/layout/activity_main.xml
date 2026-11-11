@@ -81,6 +81,19 @@
         app:surface_type="texture_view"
         app:use_controller="false" />
 
+    <!-- Live camera view (LiveViewController): full-screen RTSP player
+         above the slideshow, below the clock and controls. Invisible
+         until a live session starts. -->
+    <androidx.media3.ui.PlayerView
+        android:id="@+id/playerViewLive"
+        android:background="#000000"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:visibility="invisible"
+        app:resize_mode="fit"
+        app:surface_type="texture_view"
+        app:use_controller="false" />
+
     <!-- Order matches the real dashboard reference: weekday, then full
          date, then a large time - date lines above the time, not
          below. -->
@@ -440,6 +453,18 @@
         android:layout_gravity="bottom|end"
         android:layout_margin="24dp"
         android:orientation="horizontal">
+
+        <ImageButton
+            android:id="@+id/controlLiveViewButton"
+            android:layout_width="80dp"
+            android:layout_height="80dp"
+            android:layout_marginEnd="20dp"
+            android:background="@drawable/control_button_background"
+            android:contentDescription="@null"
+            android:padding="24dp"
+            android:scaleType="fitCenter"
+            android:src="@drawable/ic_control_live_view"
+            android:visibility="gone" />
 
         <ImageButton
             android:id="@+id/controlWebcamOnlyButton"

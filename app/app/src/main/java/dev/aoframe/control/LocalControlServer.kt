@@ -57,6 +57,8 @@ class LocalControlServer(
     private val onImmichWebhook: () -> Unit,
     private val onRefreshWebcamRequested: () -> Unit,
     private val onWebcamTestModeChanged: () -> Unit,
+    private val onLiveViewRequested: (Boolean) -> Boolean,
+    private val liveViewStatusProvider: () -> JSONObject,
     private val statusProvider: () -> JSONObject
 ) : NanoHTTPD(LOCAL_CONTROL_PORT) {
     override fun serve(session: IHTTPSession): Response = try {
@@ -71,6 +73,7 @@ class LocalControlServer(
             "/action/webcam-test-mode" -> handleWebcamTestMode(session)
             "/action/refresh-webcam" -> handleRefreshWebcam(session)
             "/action/webcam-sync-status" -> handleWebcamSyncStatus(session)
+            "/action/live-view" -> handleLiveView(session)
             "/status" -> handleStatus(session)
             else -> newFixedLengthResponse(Response.Status.NOT_FOUND, MIME_PLAINTEXT, "Not found")
         }
@@ -228,6 +231,27 @@ class LocalControlServer(
             val json = JSONObject()
             for ((camId, at) in WebcamSyncState.load(context)) json.put(camId, at)
             jsonResponse(json)
+        }
+        else -> methodNotAllowed()
+    }
+
+    // Live camera view on the frame's screen. GET reports whether a
+    // stream address is configured and whether the view is open. POST
+    // {"enabled": true|false} opens or closes it. The view closes by
+    // itself after a few minutes (LiveViewTiming.MAX_DURATION_MS). A start
+    // with no usable address in config answers 409 "not-configured".
+    private fun handleLiveView(session: IHTTPSession): Response = when (session.method) {
+        Method.GET -> jsonResponse(liveViewStatusProvider())
+        Method.POST -> {
+            val enabled = readJsonBody(session).optBoolean("enabled", false)
+            if (onLiveViewRequested(enabled)) {
+                jsonResponse(liveViewStatusProvider())
+            } else {
+                newFixedLengthResponse(
+                    Response.Status.CONFLICT, "application/json",
+                    JSONObject().put("status", "not-configured").toString()
+                )
+            }
         }
         else -> methodNotAllowed()
     }

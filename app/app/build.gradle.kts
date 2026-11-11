@@ -52,6 +52,7 @@ dependencies {
     implementation(libs.okhttp)
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.media3.exoplayer)
+    implementation(libs.media3.exoplayer.rtsp)
     implementation(libs.media3.ui)
     implementation(libs.nanohttpd)
     // Lets ART install the hand-authored baseline profile below
