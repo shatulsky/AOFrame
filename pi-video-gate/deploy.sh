@@ -39,12 +39,12 @@ REMOTE_DIR="pi-video-gate"
 SSH_OPTS=(-o StrictHostKeyChecking=accept-new)
 [ -n "$DEPLOY_SSH_KEY" ] && SSH_OPTS=(-i "$DEPLOY_SSH_KEY" "${SSH_OPTS[@]}")
 
-FILES=("server.js:server.js" "package.json:package.json" "package-lock.json:package-lock.json" "Dockerfile:Dockerfile" "docker-compose.yml:docker-compose.yml" ".dockerignore:.dockerignore")
+FILES=("server.js:server.js" "redact.js:redact.js" "package.json:package.json" "package-lock.json:package-lock.json" "Dockerfile:Dockerfile" "docker-compose.yml:docker-compose.yml" ".dockerignore:.dockerignore")
 
 echo "Checking ${#FILES[@]} file(s) against the Pi..."
 REMOTE_HASHES="$(ssh "${SSH_OPTS[@]}" "$PI_HOST" "
 	cd $REMOTE_DIR 2>/dev/null || exit 0
-	find server.js package.json package-lock.json Dockerfile docker-compose.yml .dockerignore -type f 2>/dev/null -exec sha256sum {} \;
+	find server.js redact.js package.json package-lock.json Dockerfile docker-compose.yml .dockerignore -type f 2>/dev/null -exec sha256sum {} \;
 	true
 ")"
 

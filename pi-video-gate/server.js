@@ -25,6 +25,9 @@ const { execFile } = require("child_process");
 const fs = require("fs");
 const path = require("path");
 
+// Mask URL secrets (stream tokens, user:password) in every log line, before anything logs.
+require("./redact").installConsoleRedaction();
+
 const config = require("./config.json");
 
 const IMMICH_BASE_URL = config.immichBaseUrl || "http://localhost:2283";
