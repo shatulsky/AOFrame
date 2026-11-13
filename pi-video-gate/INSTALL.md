@@ -56,8 +56,12 @@ Standalone sidecar service, sitting between Immich and the frame. Three jobs:
    ```
    `docker-compose.yml` uses `network_mode: host` (so `config.json`'s
    `http://localhost:2283` keeps resolving to Immich's published port) and
-   bind-mounts the whole working directory into the container rather than
-   baking code/config into the image - see that file's own header comment.
+   bind-mounts the service's own folder (read-write) and Immich's library
+   (read-only) into the container rather than baking code/config into the
+   image - see that file's own header comment. The container runs as uid 1000
+   (the owner of the service folder) with all capabilities dropped and a
+   read-only root filesystem; if your service folder belongs to another user,
+   change `user:` in the compose file.
    `restart: unless-stopped` means it survives a host reboot.
 4. Register a second Immich workflow (leave the frame's existing
    `AssetCreate` -> `http://<your-frame-ip>:8099/action/immich-webhook` workflow
