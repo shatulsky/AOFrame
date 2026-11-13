@@ -100,7 +100,10 @@ Standalone sidecar service, sitting between Immich and the frame. Three jobs:
   the others keep refreshing normally. The log shows one short `grab failed
   (N in a row)` warning per failed cycle. The 3rd consecutive failure of the
   same camera logs the full ffmpeg output as `[webcam] ERROR <id>: ...` lines
-  (once, for log-based error alerts). A later successful grab resets the
+  (once, for log-based error alerts). Every log line passes through
+  `redact.js`: the query string (for example `?token=...`) and any
+  `user:password@` part of a URL show as `<redacted>`, so stream tokens never
+  reach the logs. Run the tests with `npm test`. A later successful grab resets the
   count. If `frameControlUrl` is configured,
   enable night mode with a wide sleep window and confirm the log shows `frame
   is asleep - skipping this cycle entirely` with no `ffmpeg`/webcam log lines
