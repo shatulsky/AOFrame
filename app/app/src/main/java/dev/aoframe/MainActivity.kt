@@ -44,6 +44,7 @@ import dev.aoframe.webcam.WebcamTestModeConfig
 import dev.aoframe.webcam.WebcamTestModeStore
 import dev.aoframe.wake.WakeRefreshGate
 import dev.aoframe.widgets.ClockFormatter
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -61,6 +62,7 @@ private const val TAG = "MainActivity"
 // second (cheap, no network); weather is "tens of minutes, not seconds".
 private const val CLOCK_TICK_MS = 1_000L
 private const val WEATHER_REFRESH_INTERVAL_MS = 30 * 60 * 1_000L
+private const val WEATHER_RETRY_INITIAL_MS = 60 * 1_000L
 // A periodic background catch-all in case a webhook is ever missed
 // (network blip, Immich restart mid-notification). Not the only way new
 // assets appear - the Immich webhook (see runBackgroundSync()) is the
@@ -139,12 +141,18 @@ class MainActivity : ComponentActivity() {
         // show an empty pill with no icon/text ever set.
         if (weatherClient == null) {
             findViewById<View>(R.id.weatherWidgetContainer).visibility = View.GONE
-        } else if (startupSecrets?.weatherSeaLatitude == null || startupSecrets.weatherSeaLongitude == null) {
-            // Sea-temperature point not configured - hide just that
-            // icon/text pair, not the whole widget (land forecast still
-            // works fine without it).
-            findViewById<View>(R.id.weatherSeaTempIcon).visibility = View.GONE
-            findViewById<View>(R.id.weatherSeaTempText).visibility = View.GONE
+        } else {
+            // Hidden until the first fetch renders completely, so a failed
+            // or late first fetch (boot, Wi-Fi not ready) never shows an
+            // empty/half-filled pill. renderWeather() makes it visible.
+            findViewById<View>(R.id.weatherWidgetContainer).visibility = View.GONE
+            if (startupSecrets?.weatherSeaLatitude == null || startupSecrets.weatherSeaLongitude == null) {
+                // Sea-temperature point not configured - hide just that
+                // icon/text pair, not the whole widget (land forecast still
+                // works fine without it).
+                findViewById<View>(R.id.weatherSeaTempIcon).visibility = View.GONE
+                findViewById<View>(R.id.weatherSeaTempText).visibility = View.GONE
+            }
         }
         slideshowRenderer = SlideshowRenderer(
             context = this,
@@ -432,15 +440,25 @@ class MainActivity : ComponentActivity() {
     private fun startWeatherLoop() {
         val client = weatherClient ?: return
         lifecycleScope.launch {
+            var retryDelayMs = WEATHER_RETRY_INITIAL_MS
             while (isActive) {
+                var waitMs = WEATHER_REFRESH_INTERVAL_MS
                 try {
                     renderWeather(client.fetch())
+                    retryDelayMs = WEATHER_RETRY_INITIAL_MS
+                } catch (error: CancellationException) {
+                    throw error
                 } catch (error: Exception) {
                     // A failed fetch just means stale weather stays on
-                    // screen until the next attempt - never crashes the
-                    // slideshow over a network blip.
+                    // screen - never crashes the slideshow over a network
+                    // blip. Retry sooner (1 min, doubling, capped at the
+                    // normal interval): at boot the clock or Wi-Fi is often
+                    // not ready yet.
+                    Log.w(TAG, "Weather fetch failed - retrying in ${retryDelayMs / 1_000}s", error)
+                    waitMs = retryDelayMs
+                    retryDelayMs = minOf(retryDelayMs * 2, WEATHER_REFRESH_INTERVAL_MS)
                 }
-                delay(WEATHER_REFRESH_INTERVAL_MS)
+                delay(waitMs)
             }
         }
     }
@@ -489,6 +507,11 @@ class MainActivity : ComponentActivity() {
             findViewById<ImageView>(views.iconId).setImageResource(WeatherIcons.iconFor(day.weatherCode, isDaytime = true))
             findViewById<TextView>(views.maxTempId).text = "${day.maxTempC.roundToInt()}°"
             findViewById<TextView>(views.minTempId).text = "${day.minTempC.roundToInt()}°"
+        }
+        // Show the pill only once every part is filled in. A forecast with
+        // fewer than 3 days stays hidden rather than showing empty rows.
+        if (snapshot.daily.size >= dayViews.size) {
+            findViewById<View>(R.id.weatherWidgetContainer).visibility = View.VISIBLE
         }
     }
 
