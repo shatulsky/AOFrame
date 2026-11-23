@@ -164,6 +164,10 @@ clips — works identically to Immich mode.
   Wi-Fi MAC address the same across reboots on frames whose driver
   otherwise picks a random one, so router-side reservations and per-device
   mesh settings keep working.
+- [`../scripts/wifi-watchdog/`](../scripts/wifi-watchdog/) — recovers the
+  frame from Wi-Fi drops and stalls: a dark wake at night, a Wi-Fi restart
+  during a stall with the screen awake, and an optional restart when the
+  frame sits on the wrong mesh node.
 
 All are optional, independent, and fully reversible — see each one's own
 `INSTALL.md`.

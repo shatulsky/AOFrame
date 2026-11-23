@@ -1,0 +1,8 @@
+service wifi-watchdog /system/bin/sh /system/etc/wifi-watchdog.sh
+    user root
+    group root
+    seclabel u:r:shell:s0
+    disabled
+
+on property:sys.boot_completed=1
+    start wifi-watchdog
