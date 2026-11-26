@@ -3,7 +3,7 @@
 # here. Only real addition over stock node:22-slim is ffmpeg/ffprobe,
 # which this service shells out to directly on the host today (video
 # fps normalization + webcam clip capture, see INSTALL.md).
-FROM node:22-slim
+FROM node:22.23.5-bookworm-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
 		ffmpeg \

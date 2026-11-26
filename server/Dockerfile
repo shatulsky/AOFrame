@@ -1,6 +1,6 @@
 # Runtime-only image - server.js/routes/lib/config live in the bind-mounted
 # working directory (see docker-compose.yml), not COPYed in here.
-FROM node:22-slim
+FROM node:22.23.5-bookworm-slim
 
 # ffmpeg is not in node:22-slim's base Debian image - routes/photos.js
 # shells out to it to normalize every uploaded video to 8-bit SDR H.264
