@@ -101,6 +101,10 @@ device.
   `weatherLongitude` aren't set. If only `weatherSeaLatitude`/
   `weatherSeaLongitude` are missing, the sea-temperature line is hidden
   but the land forecast still shows.
+  Optional `weatherBaseUrl`, `weatherMarineBaseUrl` and
+  `weatherRetryInitialSeconds` point the widget at your own forecast
+  server and change the first retry delay (default 60 seconds). The
+  end-to-end tests use them.
 - **Countdown**: off by default — configure via
   `POST http://<frame-ip>:8099/action/countdown` (or the reference
   server's dashboard, see step 5) once the app is running.

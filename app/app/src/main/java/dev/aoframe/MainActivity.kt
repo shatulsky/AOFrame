@@ -36,7 +36,10 @@ import dev.aoframe.nightmode.NightModeController
 import dev.aoframe.nightmode.NightModeStore
 import dev.aoframe.render.SlideshowRenderer
 import dev.aoframe.slideshowsettings.SlideshowSettingsStore
+import dev.aoframe.cache.retryUpTo
 import dev.aoframe.weather.WeatherClient
+import dev.aoframe.weather.WeatherDisplayRules
+import dev.aoframe.weather.WeatherRefreshLoop
 import dev.aoframe.weather.WeatherIcons
 import dev.aoframe.weather.WeatherSnapshot
 import dev.aoframe.webcam.WebcamClipSync
@@ -95,6 +98,7 @@ class MainActivity : ComponentActivity() {
     // aren't configured, in which case the weather widget just never
     // updates (see startWeatherLoop()).
     private var weatherClient: WeatherClient? = null
+    private var weatherRetryInitialMs = WEATHER_RETRY_INITIAL_MS
     // Resolved once in onCreate() from config's "locale" field (see
     // AppLocale) - defaults to English if unset/unrecognized.
     private lateinit var locale: Locale
@@ -132,8 +136,13 @@ class MainActivity : ComponentActivity() {
         locale = AppLocale.resolve(startupSecrets?.locale)
         val weatherLat = startupSecrets?.weatherLatitude
         val weatherLon = startupSecrets?.weatherLongitude
+        weatherRetryInitialMs = startupSecrets?.weatherRetryInitialSeconds?.let { it * 1_000L } ?: WEATHER_RETRY_INITIAL_MS
         weatherClient = if (weatherLat != null && weatherLon != null) {
-            WeatherClient(weatherLat, weatherLon, startupSecrets.weatherSeaLatitude, startupSecrets.weatherSeaLongitude)
+            WeatherClient(
+                weatherLat, weatherLon, startupSecrets.weatherSeaLatitude, startupSecrets.weatherSeaLongitude,
+                baseUrl = startupSecrets.weatherBaseUrl ?: "https://api.open-meteo.com",
+                marineBaseUrl = startupSecrets.weatherMarineBaseUrl ?: "https://marine-api.open-meteo.com"
+            )
         } else {
             null
         }
@@ -440,33 +449,27 @@ class MainActivity : ComponentActivity() {
     private fun startWeatherLoop() {
         val client = weatherClient ?: return
         lifecycleScope.launch {
-            var retryDelayMs = WEATHER_RETRY_INITIAL_MS
-            while (isActive) {
-                var waitMs = WEATHER_REFRESH_INTERVAL_MS
-                try {
-                    renderWeather(client.fetch())
-                    retryDelayMs = WEATHER_RETRY_INITIAL_MS
-                } catch (error: CancellationException) {
-                    throw error
-                } catch (error: Exception) {
-                    // A failed fetch just means stale weather stays on
-                    // screen - never crashes the slideshow over a network
-                    // blip. Retry sooner (1 min, doubling, capped at the
-                    // normal interval): at boot the clock or Wi-Fi is often
-                    // not ready yet.
-                    Log.w(TAG, "Weather fetch failed - retrying in ${retryDelayMs / 1_000}s", error)
-                    waitMs = retryDelayMs
-                    retryDelayMs = minOf(retryDelayMs * 2, WEATHER_REFRESH_INTERVAL_MS)
-                }
-                delay(waitMs)
-            }
+            // A failed fetch just means stale weather stays on screen -
+            // never crashes the slideshow over a network blip. The retry
+            // and backoff rule lives in WeatherRefreshLoop (plain JVM tests).
+            WeatherRefreshLoop(
+                fetch = { client.fetch() },
+                render = { renderWeather(it) },
+                delayMs = { delay(it) },
+                isActive = { isActive },
+                onFailure = { error, retryMs ->
+                    Log.w(TAG, "Weather fetch failed - retrying in ${retryMs / 1_000}s", error)
+                },
+                refreshIntervalMs = WEATHER_REFRESH_INTERVAL_MS,
+                retryInitialMs = weatherRetryInitialMs
+            ).run()
         }
     }
 
     // Icon-based rows matching the reference, not plain text - see
     // WeatherIcons.kt's header comment for the (non-emoji) icon source.
     private fun renderWeather(snapshot: WeatherSnapshot) {
-        val isDaytime = LocalTime.now().let { it.hour in 6..19 }
+        val isDaytime = WeatherDisplayRules.isDaytime(LocalTime.now().hour)
 
         findViewById<ImageView>(R.id.weatherCurrentIcon)
             .setImageResource(WeatherIcons.iconFor(snapshot.weatherCode, isDaytime))
@@ -494,7 +497,7 @@ class MainActivity : ComponentActivity() {
             DayForecastViews(R.id.weatherDay1Label, R.id.weatherDay1Icon, R.id.weatherDay1MaxTemp, R.id.weatherDay1MinTemp),
             DayForecastViews(R.id.weatherDay2Label, R.id.weatherDay2Icon, R.id.weatherDay2MaxTemp, R.id.weatherDay2MinTemp)
         )
-        snapshot.daily.take(3).forEachIndexed { index, day ->
+        snapshot.daily.take(WeatherDisplayRules.visibleForecastDays(snapshot.daily.size)).forEachIndexed { index, day ->
             val views = dayViews[index]
             val label = when (index) {
                 0 -> AppLocale.today(locale)
@@ -510,7 +513,7 @@ class MainActivity : ComponentActivity() {
         }
         // Show the pill only once every part is filled in. A forecast with
         // fewer than 3 days stays hidden rather than showing empty rows.
-        if (snapshot.daily.size >= dayViews.size) {
+        if (WeatherDisplayRules.shouldShowWidget(snapshot.daily.size)) {
             findViewById<View>(R.id.weatherWidgetContainer).visibility = View.VISIBLE
         }
     }
@@ -825,19 +828,16 @@ class MainActivity : ComponentActivity() {
             return null
         }
         val sync = AssetCacheSync(this@MainActivity, ImmichClient(secrets), assetCacheDatabase)
-        val immichAssets = run {
-            for (attempt in 1..SYNC_MAX_ATTEMPTS) {
-                try {
-                    val assets = sync.sync()
-                    lastSyncAtMs = System.currentTimeMillis()
-                    return@run assets
-                } catch (error: Exception) {
-                    Log.e(TAG, "Slideshow sync failed (attempt $attempt/$SYNC_MAX_ATTEMPTS)", error)
-                    if (attempt < SYNC_MAX_ATTEMPTS) delay(SYNC_RETRY_DELAY_MS)
-                }
+        val immichAssets = retryUpTo(
+            maxAttempts = SYNC_MAX_ATTEMPTS,
+            retryDelayMs = SYNC_RETRY_DELAY_MS,
+            delayMs = { delay(it) },
+            onFailure = { attempt, error ->
+                Log.e(TAG, "Slideshow sync failed (attempt $attempt/$SYNC_MAX_ATTEMPTS)", error)
             }
-            return null
-        }
+        ) {
+            sync.sync().also { lastSyncAtMs = System.currentTimeMillis() }
+        } ?: return null
 
         return immichAssets + syncWebcamAssets()
     }

@@ -1,5 +1,6 @@
 plugins {
     alias(libs.plugins.android.application)
+    jacoco
 }
 
 android {
@@ -19,6 +20,13 @@ android {
     }
 
     buildTypes {
+        debug {
+            // Coverage per layer: unit tests write a .exec file, the
+            // instrumented tests (integration and E2E) write a .ec file.
+            // scripts/run-all-tests.sh merges them (see docs/testing.md).
+            enableUnitTestCoverage = true
+            enableAndroidTestCoverage = true
+        }
         release {
             // R8 + resource shrinking - smaller APK, faster install/cold
             // start on constrained hardware.
@@ -64,4 +72,27 @@ dependencies {
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(libs.okhttp.mockwebserver)
+}
+
+// One report from the three layers. Reads whatever coverage files exist,
+// so it also works after a single layer. Run by scripts/run-all-tests.sh.
+tasks.register<JacocoReport>("jacocoMergedReport") {
+    group = "verification"
+    description = "Merged line coverage of the unit, integration and E2E layers"
+    val classes = fileTree(layout.buildDirectory.dir("intermediates/built_in_kotlinc/debug/compileDebugKotlin/classes")) {
+        exclude("**/R.class", "**/R$*.class", "**/BuildConfig.*")
+    }
+    classDirectories.setFrom(classes)
+    sourceDirectories.setFrom(files("src/main/java"))
+    // -Player=unit|integration|e2e reports one layer; no property merges all.
+    val layer = providers.gradleProperty("layer").orNull
+    executionData.setFrom(
+        fileTree(layout.buildDirectory.dir(if (layer == null) "layers" else "layers/$layer")) {
+            include("**/*.exec", "**/*.ec")
+        }
+    )
+    reports {
+        xml.required.set(true)
+        html.required.set(true)
+    }
 }

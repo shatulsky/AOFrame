@@ -40,7 +40,13 @@ data class ImmichSecrets(
     // restream). Null when unset, which hides the on-screen button and
     // makes the live-view action report "not configured". Config only:
     // it can hold camera credentials, so it never goes in source.
-    val liveViewUrl: String? = null
+    val liveViewUrl: String? = null,
+    // Optional weather endpoints and first retry delay. Unset means the
+    // public Open-Meteo hosts and a 60 s first retry. A self-hosted proxy
+    // or an end-to-end test can point them at its own server.
+    val weatherBaseUrl: String? = null,
+    val weatherMarineBaseUrl: String? = null,
+    val weatherRetryInitialSeconds: Long? = null
 )
 
 /**
@@ -85,7 +91,10 @@ object ImmichSecretsStore {
                 weatherSeaLatitude = json.optDouble("weatherSeaLatitude").takeUnless { it.isNaN() },
                 weatherSeaLongitude = json.optDouble("weatherSeaLongitude").takeUnless { it.isNaN() },
                 locale = json.optString("locale").ifBlank { null },
-                liveViewUrl = json.optString("liveViewUrl").ifBlank { null }
+                liveViewUrl = json.optString("liveViewUrl").ifBlank { null },
+                weatherBaseUrl = json.optString("weatherBaseUrl").ifBlank { null },
+                weatherMarineBaseUrl = json.optString("weatherMarineBaseUrl").ifBlank { null },
+                weatherRetryInitialSeconds = json.optLong("weatherRetryInitialSeconds", 0L).takeIf { it > 0 }
             )
         } catch (error: Exception) {
             null
