@@ -104,7 +104,10 @@ Standalone sidecar service, sitting between Immich and the frame. Three jobs:
   the others keep refreshing normally. The log shows one short `grab failed
   (N in a row)` warning per failed cycle. The 3rd consecutive failure of the
   same camera logs the full ffmpeg output as `[webcam] ERROR <id>: ...` lines
-  (once, for log-based error alerts). Every log line passes through
+  (once, for log-based error alerts). A camera whose stream is frozen (the
+  new clip is byte-identical to the previous one) counts as a failed grab and
+  logs `stream looks frozen`. Its old clip is not renewed, so it leaves
+  `/webcam/clips` after `MAX_STALE` (3h). Every log line passes through
   `redact.js`: the query string (for example `?token=...`) and any
   `user:password@` part of a URL show as `<redacted>`, so stream tokens never
   reach the logs. Run the tests with `npm test`. A later successful grab resets the

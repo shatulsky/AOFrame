@@ -27,6 +27,7 @@ const path = require("path");
 
 // Mask URL secrets (stream tokens, user:password) in every log line, before anything logs.
 require("./redact").installConsoleRedaction();
+const { isRepeatOfPrevious } = require("./frozen-stream");
 
 const config = require("./config.json");
 
@@ -563,7 +564,8 @@ function logWebcamFailure(camId, error) {
 			if (line.trim()) console.error(`[webcam] ERROR ${camId}: ${line}`);
 		}
 	} else {
-		console.warn(`[webcam] ${camId} grab failed (${failures} in a row) - keeping previous clip if any`);
+		const reason = error.frozenStream ? ": stream looks frozen, the clip repeats the previous one" : "";
+		console.warn(`[webcam] ${camId} grab failed (${failures} in a row)${reason} - keeping previous clip if any`);
 	}
 }
 
@@ -572,6 +574,16 @@ async function captureOneWebcam(cam) {
 	const finalPath = path.join(WEBCAM_DIR, `${cam.id}.mp4`);
 	try {
 		await captureWebcam(cam.streamUrl, tmpPath);
+		// A frozen stream (the camera or its relay stopped moving) still
+		// copies without an error, and the same old footage would count as
+		// a fresh clip. Treat it as a failed capture: the previous clip
+		// stays, the success time is not renewed, and the camera drops out
+		// of the manifest after WEBCAM_MAX_STALE_MS.
+		if (isRepeatOfPrevious(tmpPath, finalPath)) {
+			const frozen = new Error("stream looks frozen: the new clip is identical to the previous one");
+			frozen.frozenStream = true;
+			throw frozen;
+		}
 		// Probed before the rename (still at tmpPath) - a probe failure here
 		// is unexpected for a file ffmpeg itself just finished writing
 		// successfully, but if it happens, still commit the clip with a
