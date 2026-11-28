@@ -61,7 +61,16 @@ class LocalControlServer(
     private val liveViewStatusProvider: () -> JSONObject,
     private val statusProvider: () -> JSONObject
 ) : NanoHTTPD(LOCAL_CONTROL_PORT) {
+    // The request body, read in serve() before any routing. NanoHTTPD keeps
+    // connections alive and does not skip a body that no handler read: the
+    // leftover bytes would be taken as the start of the next request on
+    // that connection, which then fails with 400 (a fire-and-forget POST
+    // sent with a JSON body, or any 405). One request runs at a time on a
+    // connection's thread, so a ThreadLocal holds it for readJsonBody().
+    private val requestBody = ThreadLocal<String?>()
+
     override fun serve(session: IHTTPSession): Response = try {
+        requestBody.set(readBody(session))
         when (session.uri) {
             "/action/night-mode" -> handleNightMode(session)
             "/action/countdown" -> handleCountdown(session)
@@ -80,6 +89,15 @@ class LocalControlServer(
     } catch (error: Exception) {
         Log.e(TAG, "request to ${session.uri} failed", error)
         newFixedLengthResponse(Response.Status.INTERNAL_ERROR, MIME_PLAINTEXT, error.message ?: "error")
+    } finally {
+        requestBody.remove()
+    }
+
+    private fun readBody(session: IHTTPSession): String? {
+        if (session.method != Method.POST && session.method != Method.PUT) return null
+        val files = HashMap<String, String>()
+        session.parseBody(files)
+        return files["postData"]
     }
 
     private fun handleRefreshCache(session: IHTTPSession): Response = when (session.method) {
@@ -256,11 +274,8 @@ class LocalControlServer(
         else -> methodNotAllowed()
     }
 
-    private fun readJsonBody(session: IHTTPSession): JSONObject {
-        val files = HashMap<String, String>()
-        session.parseBody(files)
-        return JSONObject(files["postData"] ?: "{}")
-    }
+    @Suppress("UNUSED_PARAMETER") // kept so every handler reads its body the same way
+    private fun readJsonBody(session: IHTTPSession): JSONObject = JSONObject(requestBody.get() ?: "{}")
 
     private fun jsonResponse(json: JSONObject): Response =
         newFixedLengthResponse(Response.Status.OK, "application/json", json.toString())

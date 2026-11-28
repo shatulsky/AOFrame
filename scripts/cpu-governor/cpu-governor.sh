@@ -15,20 +15,23 @@
 
 GOVERNOR=conservative
 CPUS="0 1 2 3"
+# Set only by a test (temp files); the init service sets neither.
+CPU_ROOT=${CPU_ROOT:-/sys/devices/system/cpu}
+LOG=${LOG:-/data/local/tmp/cpu-governor.log}
 
-su --daemon >/data/local/tmp/cpu-governor.log 2>&1
+su --daemon >$LOG 2>&1
 i=0
 while [ $i -lt 10 ]; do
     for c in $CPUS; do
-        su -c "echo $GOVERNOR > /sys/devices/system/cpu/cpu$c/cpufreq/scaling_governor" >>/data/local/tmp/cpu-governor.log 2>&1
+        su -c "echo $GOVERNOR > $CPU_ROOT/cpu$c/cpufreq/scaling_governor" >>$LOG 2>&1
     done
 
     ok=1
     for c in $CPUS; do
-        grep -q "^$GOVERNOR$" "/sys/devices/system/cpu/cpu$c/cpufreq/scaling_governor" || ok=0
+        grep -q "^$GOVERNOR$" "$CPU_ROOT/cpu$c/cpufreq/scaling_governor" || ok=0
     done
     if [ "$ok" = "1" ]; then
-        echo GOVERNOR_ACTIVE >>/data/local/tmp/cpu-governor.log
+        echo GOVERNOR_ACTIVE >>$LOG
         break
     fi
 

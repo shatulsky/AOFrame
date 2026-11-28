@@ -107,4 +107,13 @@ if [ "$violations" -ne 0 ]; then
 	exit 1
 fi
 
+# --- Optional: tests and coverage floor of the staged parts ---
+# Runs only where the maintainer's coverage tool is installed
+# (.claude/coverage/measure.sh plus its precommit.sh); a plain clone skips
+# it. See docs/testing.md. SKIP_COVERAGE=1 git commit ... skips this step only.
+COVERAGE_HOOK="${IMPROVE_COVERAGE_HOME:-$HOME/.claude/skills/improve-coverage}/scripts/precommit.sh"
+if [ -f .claude/coverage/measure.sh ] && [ -f "$COVERAGE_HOOK" ]; then
+	bash "$COVERAGE_HOOK" || exit 1
+fi
+
 exit 0

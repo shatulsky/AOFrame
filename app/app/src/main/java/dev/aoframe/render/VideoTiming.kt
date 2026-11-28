@@ -17,4 +17,28 @@ object VideoTiming {
 
     fun shouldTriggerLatePreload(currentPositionMs: Long, durationMs: Long, leadMs: Long): Boolean =
         durationMs > 0 && (durationMs - currentPositionMs) < leadMs
+
+    /** What the video watchdog does after one poll of the player. */
+    enum class WatchdogAction { ADVANCE, PRELOAD_NEXT, WAIT }
+
+    /**
+     * One poll of the playing video: advance when it ended, stalled or ran
+     * past the ceiling; otherwise preload the next video once, near the end.
+     */
+    fun watchdogAction(
+        ended: Boolean,
+        elapsedSincePlayRequestedMs: Long,
+        currentPositionMs: Long,
+        durationMs: Long,
+        latePreloadDone: Boolean,
+        stallTimeoutMs: Long,
+        maxDurationMs: Long,
+        leadMs: Long
+    ): WatchdogAction = when {
+        ended ||
+            hasStalled(elapsedSincePlayRequestedMs, currentPositionMs, stallTimeoutMs) ||
+            hasExceededMaxDuration(elapsedSincePlayRequestedMs, maxDurationMs) -> WatchdogAction.ADVANCE
+        !latePreloadDone && shouldTriggerLatePreload(currentPositionMs, durationMs, leadMs) -> WatchdogAction.PRELOAD_NEXT
+        else -> WatchdogAction.WAIT
+    }
 }

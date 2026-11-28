@@ -79,12 +79,6 @@ private const val KEN_BURNS_TARGET_FPS = 30
 
 private const val TAG = "SlideshowRenderer"
 
-// A Live Photo's motion clip is a different, otherwise-hidden asset
-// referenced via videoId - a standalone video is its own asset id:
-// `isLivePhoto ? asset.videoId : asset.id`.
-private fun ImmichAsset.videoKey(): String =
-    if (type == ImmichAssetType.LIVE_PHOTO) (videoId ?: id) else id
-
 /**
  * Renders the cached asset rotation: ImageView + Ken Burns (a fps-gated
  * ValueAnimator on scale/pivot, not raw Matrix or Compose - see
@@ -116,8 +110,8 @@ class SlideshowRenderer(
     private var frontIsA = true
     private var backPreloadKey: String? = null
 
-    private var assets: List<ImmichAsset> = emptyList()
-    private var currentIndex = 0
+    // Order and position of the rotation (see Playlist for the rules).
+    private val playlist = Playlist<ImmichAsset>(idOf = { it.id })
     // Set while paused (see pause()/resumeIfPaused() below) - guards
     // against a stray timer/callback that was already in flight right as
     // pause() cancelled its job from touching the view afterward, and lets
@@ -138,16 +132,12 @@ class SlideshowRenderer(
     // Off only for the on-screen webcam-only button/toggle - a
     // small, deliberately curated set of clips reads better in a fixed,
     // predictable order than reshuffled every loop like the full photo
-    // library does. Gates every .shuffled() call below; MainActivity sets
+    // library does. Sets Playlist.shuffleEnabled; MainActivity sets
     // this alongside the webcam-only mode toggle itself (see
     // WebcamTestModeStore/syncAssets()), not owned by this class.
-    private var shuffleEnabled = true
-
     fun setShuffleEnabled(enabled: Boolean) {
-        shuffleEnabled = enabled
+        playlist.shuffleEnabled = enabled
     }
-
-    private fun <T> List<T>.shuffledIfEnabled(): List<T> = if (shuffleEnabled) shuffled() else this
 
     // Bumped by every showCurrent() call, captured by showPhoto()/
     // showVideo() as their own "generation". renderJob cancellation alone
@@ -180,10 +170,8 @@ class SlideshowRenderer(
     // that order until the rotation finishes, then reshuffle for the
     // next loop, rather than preserving a random order between launches.
     fun start(assets: List<ImmichAsset>, onFirstFrameReady: (() -> Unit)? = null) {
-        this.assets = assets.shuffledIfEnabled()
         this.onFirstFrameReady = onFirstFrameReady
-        if (assets.isEmpty()) return
-        currentIndex = 0
+        if (!playlist.start(assets)) return
         showCurrent()
     }
 
@@ -200,19 +188,12 @@ class SlideshowRenderer(
     // deliberately different - that one's user-triggered and expected to
     // visibly restart the rotation, so it keeps calling start() instead.
     fun updateAssets(newAssets: List<ImmichAsset>) {
-        if (newAssets.isEmpty()) return
-        val currentAssetId = assets.getOrNull(currentIndex)?.id
         // Shuffled here too, not just in start()/goToNext()'s loop-wrap -
-        // there's no need to preserve a random order between launches/
-        // loops, so a background sync landing mid-loop is just as free to
-        // reshuffle the upcoming rotation as a fresh loop boundary is.
-        // What must NOT happen is interrupting
-        // what's already on screen, so the current asset's new index is
-        // located within the shuffled list, same as before.
-        val shuffled = newAssets.shuffledIfEnabled()
-        assets = shuffled
-        val preservedIndex = currentAssetId?.let { id -> shuffled.indexOfFirst { it.id == id } } ?: -1
-        currentIndex = if (preservedIndex >= 0) preservedIndex else 0
+        // a background sync landing mid-loop is just as free to reshuffle
+        // the upcoming rotation as a fresh loop boundary is. What must NOT
+        // happen is interrupting what's already on screen: Playlist.update()
+        // keeps the current asset's position by id.
+        if (!playlist.update(newAssets)) return
         // The "next" asset's identity may have shifted along with the
         // list - invalidate whatever was preloaded against the old
         // indices/ids so the next advance re-decodes/re-preloads fresh
@@ -230,13 +211,13 @@ class SlideshowRenderer(
     // just re-feeds it the current list rather than duplicating that
     // logic. Deliberately not start() - a manual reshuffle isn't asking
     // to jump back to the first slide, just to freshen the order.
-    fun reshuffle() = updateAssets(assets)
+    fun reshuffle() = updateAssets(playlist.items)
 
     // Read-only snapshot of the current rotation - backs the admin panel's
     // "force update on frame" webcam-only refresh (MainActivity.refreshWebcamOnly()),
     // which needs to splice fresh webcam assets into the list currently
     // playing without touching the Immich portion or interrupting playback.
-    fun currentAssets(): List<ImmichAsset> = assets
+    fun currentAssets(): List<ImmichAsset> = playlist.items
 
     private fun notifyFirstFrameReady() {
         onFirstFrameReady?.invoke()
@@ -247,28 +228,15 @@ class SlideshowRenderer(
     // this index, cancel whatever timer was running, render immediately"
     // shape as advanceToNext()'s own natural-advance path, just
     // user-triggered and going either direction.
+    // A wrap past the end (one full loop finished, via the natural advance
+    // timer or the manual "next" button) reshuffles for the next pass - see
+    // Playlist.next().
     fun goToNext() {
-        if (assets.isEmpty()) return
-        val nextIndex = currentIndex + 1
-        if (nextIndex >= assets.size) {
-            // Wrapped past the end - one full loop just finished (via
-            // the natural advance timer or the manual "next" button,
-            // both funnel through here). Reshuffle for the next pass
-            // rather than replaying the same order forever - see
-            // start()'s own comment on why this lives here, not in
-            // AssetRepository.
-            assets = assets.shuffledIfEnabled()
-            currentIndex = 0
-        } else {
-            currentIndex = nextIndex
-        }
-        showCurrent()
+        if (playlist.next()) showCurrent()
     }
 
     fun goToPrevious() {
-        if (assets.isEmpty()) return
-        currentIndex = (currentIndex - 1 + assets.size) % assets.size
-        showCurrent()
+        if (playlist.previous()) showCurrent()
     }
 
     // Stops all background work while the screen's actually off - called
@@ -334,7 +302,7 @@ class SlideshowRenderer(
         isPaused = false
         cancelSlideTimers()
         val generation = ++renderGeneration
-        val asset = assets.getOrNull(currentIndex) ?: return
+        val asset = playlist.current ?: return
         when (asset.type) {
             ImmichAssetType.VIDEO, ImmichAssetType.LIVE_PHOTO -> showVideo(asset)
             ImmichAssetType.IMAGE -> showPhoto(asset, generation)
@@ -351,7 +319,7 @@ class SlideshowRenderer(
         photoView.visibility = View.VISIBLE
 
         renderJob = scope.launch {
-            val bitmap = if (preloadedForIndex == currentIndex) preloadedBitmap else decodeThumbnail(asset)
+            val bitmap = if (preloadedForIndex == playlist.index) preloadedBitmap else decodeThumbnail(asset)
             // A newer showCurrent() call already superseded this one while
             // the decode above was running - drop it rather than stomp the
             // view/timers for a photo that's no longer current (see
@@ -420,7 +388,7 @@ class SlideshowRenderer(
             // *previous* photo was still showing, so by the time we get
             // here it's usually already in hand.
             photoBackdropView.visibility = View.VISIBLE
-            val backdrop = if (preloadedBackdropForIndex == currentIndex) preloadedBackdropBitmap else decodeBackdrop(asset)
+            val backdrop = if (preloadedBackdropForIndex == playlist.index) preloadedBackdropBitmap else decodeBackdrop(asset)
             photoBackdropView.setImageBitmap(backdrop)
         }
     }
@@ -475,9 +443,9 @@ class SlideshowRenderer(
         // black while decodeThumbnail() ran. Mirror showPhoto()'s
         // earliest-possible preload here too (no-ops if the next asset
         // isn't an image). No generation guard needed here (unlike
-        // showPhoto()'s own render job) - it reads currentIndex live
+        // showPhoto()'s own render job) - it reads playlist.index live
         // rather than a captured asset, and showPhoto() already checks
-        // preloadedForIndex == currentIndex before trusting the result,
+        // preloadedForIndex == playlist.index before trusting the result,
         // so a stale/overwritten preload is at worst a wasted decode,
         // never a wrong-photo display.
         scope.launch { preloadNextBitmap() }
@@ -513,21 +481,26 @@ class SlideshowRenderer(
         watchdogJob = scope.launch {
             while (isActive) {
                 delay(WATCHDOG_POLL_INTERVAL_MS)
-                val elapsed = SystemClock.elapsedRealtime() - startedAt
-                val position = player.currentPosition
-                val duration = player.duration
-
-                if (player.playbackState == Player.STATE_ENDED ||
-                    VideoTiming.hasStalled(elapsed, position, VIDEO_STALL_TIMEOUT_MS) ||
-                    VideoTiming.hasExceededMaxDuration(elapsed, VIDEO_MAX_DURATION_MS)
-                ) {
-                    advanceToNext()
-                    return@launch
-                }
-
-                if (!latePreloadTriggered && VideoTiming.shouldTriggerLatePreload(position, duration, LATE_PRELOAD_LEAD_MS)) {
-                    latePreloadTriggered = true
-                    preloadNextVideoIfNeeded()
+                val action = VideoTiming.watchdogAction(
+                    ended = player.playbackState == Player.STATE_ENDED,
+                    elapsedSincePlayRequestedMs = SystemClock.elapsedRealtime() - startedAt,
+                    currentPositionMs = player.currentPosition,
+                    durationMs = player.duration,
+                    latePreloadDone = latePreloadTriggered,
+                    stallTimeoutMs = VIDEO_STALL_TIMEOUT_MS,
+                    maxDurationMs = VIDEO_MAX_DURATION_MS,
+                    leadMs = LATE_PRELOAD_LEAD_MS
+                )
+                when (action) {
+                    VideoTiming.WatchdogAction.ADVANCE -> {
+                        advanceToNext()
+                        return@launch
+                    }
+                    VideoTiming.WatchdogAction.PRELOAD_NEXT -> {
+                        latePreloadTriggered = true
+                        preloadNextVideoIfNeeded()
+                    }
+                    VideoTiming.WatchdogAction.WAIT -> Unit
                 }
             }
         }
@@ -545,9 +518,8 @@ class SlideshowRenderer(
     // whole-clip-duration overlap causes real playback lag (two active
     // decode sessions at once on constrained hardware).
     private fun preloadNextVideoIfNeeded() {
-        if (assets.isEmpty()) return
-        val nextAsset = assets.getOrNull((currentIndex + 1) % assets.size) ?: return
-        if (nextAsset.type != ImmichAssetType.VIDEO && nextAsset.type != ImmichAssetType.LIVE_PHOTO) return
+        val nextAsset = playlist.upNext ?: return
+        if (!nextAsset.isPlayedAsVideo) return
 
         val key = nextAsset.videoKey()
         if (backPreloadKey == key) return
@@ -717,9 +689,8 @@ class SlideshowRenderer(
     }
 
     private suspend fun preloadNextBitmap() {
-        if (assets.isEmpty()) return
-        val nextIndex = (currentIndex + 1) % assets.size
-        val nextAsset = assets.getOrNull(nextIndex) ?: return
+        val nextIndex = playlist.nextIndex ?: return
+        val nextAsset = playlist.items[nextIndex]
         if (nextAsset.type != ImmichAssetType.IMAGE) return
         preloadedBitmap = decodeThumbnail(nextAsset)
         preloadedForIndex = nextIndex

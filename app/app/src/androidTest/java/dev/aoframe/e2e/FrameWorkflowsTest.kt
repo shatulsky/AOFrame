@@ -59,6 +59,56 @@ class FrameWorkflowsTest {
     }
 
     @Test
+    fun aVideoPlaysToItsEndAndALandscapePhotoGetsTheBlurredBackdrop() {
+        backend.photosJson = FakeBackend.VIDEO_AND_WIDE_PHOTO_JSON
+        FrameState.writeSlideDuration(1_000)
+        page { page ->
+            eventually("loading screen dismissed", timeoutMs = 30_000) { !page.loadingOverlayShown }
+            // Two slides in a random order. The photo can follow the video only
+            // when the 1 s clip ended and the watchdog moved on.
+            var last: String? = null
+            eventually("a video, then the letterboxed photo after it", timeoutMs = 30_000) {
+                val now = when {
+                    page.videoShown -> "video"
+                    page.backdropShown -> "photo"
+                    else -> last
+                }
+                val videoEnded = last == "video" && now == "photo"
+                last = now
+                videoEnded
+            }
+        }
+    }
+
+    @Test
+    fun theWebcamOnlyButtonSwitchesToTheCameraClipsAndBack() {
+        // 60 s slides: once a photo is up it stays, so a video right after
+        // the tap can only come from the switch.
+        FrameState.writeSlideDuration(60_000)
+        val config = FrameConfig(baseUrl).apply { videoGate = true }
+        page(config) { page ->
+            eventually("a photo on screen", timeoutMs = 30_000) { page.photoVisible }
+            eventually("webcam-only button shown") { page.webcamOnlyButtonShown }
+            page.tapWebcamOnly()
+            eventually("the camera clip plays") { page.videoShown && !page.photoVisible }
+            assertTrue(get("/action/webcam-test-mode").getBoolean("enabled"))
+            eventually("a fresh capture was asked of the gate") { backend.webcamRefreshCalls.get() >= 1 }
+            page.tapWebcamOnly()
+            eventually("back to the photos") { page.photoVisible && !page.videoShown }
+            assertFalse(get("/action/webcam-test-mode").getBoolean("enabled"))
+        }
+    }
+
+    @Test
+    fun theWebcamOnlyButtonHidesWhenTheGateSwitchedTheFeatureOff() {
+        backend.webcamEnabled = false
+        val config = FrameConfig(baseUrl).apply { videoGate = true }
+        page(config) { page ->
+            eventually("webcam-only button hidden") { !page.webcamOnlyButtonShown }
+        }
+    }
+
+    @Test
     fun clockShowsTimeAndDateAndTheWeatherWidgetFillsFromTheForecast() = page { page ->
         assertTrue("clock time was '${page.clockTime}'", Pattern.matches("\\d{1,2}:\\d{2}\\d{2}", page.clockTime))
         assertTrue(page.clockDate.isNotBlank())

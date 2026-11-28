@@ -17,23 +17,6 @@ const path = require("path");
 const crypto = require("crypto");
 const multer = require("multer");
 const { execFile } = require("child_process");
-const config = require("../config.json");
-
-const STORAGE_DIR = path.resolve(__dirname, "..", config.photoStorageDir || "./photos");
-const MANIFEST_PATH = path.join(STORAGE_DIR, "manifest.json");
-fs.mkdirSync(STORAGE_DIR, { recursive: true });
-
-function loadManifest() {
-	try {
-		return JSON.parse(fs.readFileSync(MANIFEST_PATH, "utf8"));
-	} catch (error) {
-		return {};
-	}
-}
-
-function saveManifest(manifest) {
-	fs.writeFileSync(MANIFEST_PATH, JSON.stringify(manifest, null, 2));
-}
 
 // Every uploaded video gets forced through this, unconditionally - unlike
 // pi-video-gate's Immich-side normalization (fps only, since Immich's own
@@ -57,25 +40,50 @@ function transcodeVideo(inputPath, outputPath) {
 	});
 }
 
-const upload = multer({
-	storage: multer.diskStorage({
-		destination: STORAGE_DIR,
-		filename: (req, file, cb) => {
-			const id = crypto.randomUUID();
-			req.uploadedId = id;
-			cb(null, id + path.extname(file.originalname));
-		}
-	}),
-	// 500MB ceiling - generous enough for an unedited phone/camera video
-	// clip before transcodeVideo() below normalizes it down, while still
-	// bounding a single upload's disk/memory footprint.
-	limits: { fileSize: 500 * 1024 * 1024 },
-	fileFilter: (req, file, cb) => {
-		cb(null, /^(image\/(jpeg|png|webp|gif)|video\/mp4)$/.test(file.mimetype));
-	}
-});
+// registerPhotoRoutes(app, { storageDir, transcode }): storageDir is an absolute
+// folder (server.js resolves config.photoStorageDir); transcode defaults to the
+// ffmpeg call above and is replaced by a fake in tests.
+module.exports = function registerPhotoRoutes(app, { storageDir, transcode = transcodeVideo }) {
+	const STORAGE_DIR = storageDir;
+	const MANIFEST_PATH = path.join(STORAGE_DIR, "manifest.json");
+	fs.mkdirSync(STORAGE_DIR, { recursive: true });
 
-module.exports = function registerPhotoRoutes(app) {
+	function loadManifest() {
+		try {
+			return JSON.parse(fs.readFileSync(MANIFEST_PATH, "utf8"));
+		} catch (error) {
+			return {};
+		}
+	}
+
+	// Only the manifest's own keys are ids: a plain lookup would find
+	// "__proto__" or "constructor" and let PATCH write into Object.prototype.
+	function entryOf(manifest, id) {
+		return Object.hasOwn(manifest, id) ? manifest[id] : undefined;
+	}
+
+	function saveManifest(manifest) {
+		fs.writeFileSync(MANIFEST_PATH, JSON.stringify(manifest, null, 2));
+	}
+
+	const upload = multer({
+		storage: multer.diskStorage({
+			destination: STORAGE_DIR,
+			filename: (req, file, cb) => {
+				const id = crypto.randomUUID();
+				req.uploadedId = id;
+				cb(null, id + path.extname(file.originalname));
+			}
+		}),
+		// 500MB ceiling - generous enough for an unedited phone/camera video
+		// clip before transcodeVideo() below normalizes it down, while still
+		// bounding a single upload's disk/memory footprint.
+		limits: { fileSize: 500 * 1024 * 1024 },
+		fileFilter: (req, file, cb) => {
+			cb(null, /^(image\/(jpeg|png|webp|gif)|video\/mp4)$/.test(file.mimetype));
+		}
+	});
+
 	app.post("/api/photos", upload.single("photo"), async (req, res) => {
 		if (!req.file) {
 			res.status(400).json({ error: "no file uploaded (expected multipart field 'photo', one of image/jpeg|png|webp|gif|video/mp4)" });
@@ -86,7 +94,7 @@ module.exports = function registerPhotoRoutes(app) {
 			const uploadedPath = path.join(STORAGE_DIR, req.file.filename);
 			const normalizedPath = path.join(STORAGE_DIR, `${req.uploadedId}.normalized.mp4`);
 			try {
-				await transcodeVideo(uploadedPath, normalizedPath);
+				await transcode(uploadedPath, normalizedPath);
 				fs.renameSync(normalizedPath, path.join(STORAGE_DIR, `${req.uploadedId}.mp4`));
 				if (uploadedPath !== path.join(STORAGE_DIR, `${req.uploadedId}.mp4`)) fs.rmSync(uploadedPath, { force: true });
 			} catch (error) {
@@ -117,7 +125,7 @@ module.exports = function registerPhotoRoutes(app) {
 
 	app.get("/api/photos/:id", (req, res) => {
 		const manifest = loadManifest();
-		const meta = manifest[req.params.id];
+		const meta = entryOf(manifest, req.params.id);
 		if (!meta) {
 			res.status(404).end();
 			return;
@@ -132,7 +140,7 @@ module.exports = function registerPhotoRoutes(app) {
 	// percentages ImmichAsset.faceX/faceY already expect.
 	app.patch("/api/photos/:id/face", (req, res) => {
 		const manifest = loadManifest();
-		const meta = manifest[req.params.id];
+		const meta = entryOf(manifest, req.params.id);
 		if (!meta) {
 			res.status(404).end();
 			return;
@@ -150,7 +158,7 @@ module.exports = function registerPhotoRoutes(app) {
 
 	app.delete("/api/photos/:id", (req, res) => {
 		const manifest = loadManifest();
-		const meta = manifest[req.params.id];
+		const meta = entryOf(manifest, req.params.id);
 		if (!meta) {
 			res.status(404).end();
 			return;
@@ -161,3 +169,5 @@ module.exports = function registerPhotoRoutes(app) {
 		res.status(204).end();
 	});
 };
+
+module.exports.transcodeVideo = transcodeVideo;

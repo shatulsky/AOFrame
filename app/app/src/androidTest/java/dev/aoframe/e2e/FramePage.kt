@@ -46,8 +46,29 @@ class FramePage(private val scenario: ActivityScenario<MainActivity>) {
     val photoShown: Boolean
         get() = read { it.findViewById<ImageView>(R.id.photoView).drawable != null }
 
+    /** A photo is on screen now (the photo view is the visible one). */
+    val photoVisible: Boolean
+        get() = visibility(R.id.photoView) == View.VISIBLE && photoShown
+
+    val webcamOnlyButtonShown: Boolean get() = visibility(R.id.controlWebcamOnlyButton) == View.VISIBLE
+
+    /** One of the two video players is the visible one. */
+    val videoShown: Boolean
+        get() = visibility(R.id.playerViewA) == View.VISIBLE || visibility(R.id.playerViewB) == View.VISIBLE
+
+    /** The blurred backdrop behind a letterboxed (landscape) photo. */
+    val backdropShown: Boolean
+        get() = read {
+            val backdrop = it.findViewById<ImageView>(R.id.photoBackdropView)
+            backdrop.visibility == View.VISIBLE && backdrop.drawable != null
+        }
+
     fun tapLiveView() {
         onView(withId(R.id.controlLiveViewButton)).perform(click())
+    }
+
+    fun tapWebcamOnly() {
+        onView(withId(R.id.controlWebcamOnlyButton)).perform(click())
     }
 }
 

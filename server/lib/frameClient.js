@@ -5,14 +5,20 @@
  * convenience, never a second source of truth.
  */
 const http = require("http");
-const config = require("../config.json");
 
-const FRAME_CONTROL_URL = config.frameControlUrl || "http://127.0.0.1:8099";
+const DEFAULT_FRAME_CONTROL_URL = "http://127.0.0.1:8099";
 
-function frameRequest(path, method, body) {
+// createFrameClient(baseUrl) -> frameRequest(path, method, body): one client per
+// device address. server.js passes config.frameControlUrl; tests pass a fake server.
+function createFrameClient(baseUrl) {
+	const frameControlUrl = baseUrl || DEFAULT_FRAME_CONTROL_URL;
+	return (path, method, body) => frameRequest(frameControlUrl, path, method, body);
+}
+
+function frameRequest(frameControlUrl, path, method, body) {
 	return new Promise((resolve, reject) => {
 		const data = body !== undefined ? JSON.stringify(body) : null;
-		const req = http.request(`${FRAME_CONTROL_URL}${path}`, {
+		const req = http.request(`${frameControlUrl}${path}`, {
 			method,
 			headers: data ? { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(data) } : {}
 		}, (res) => {
@@ -36,4 +42,4 @@ function frameRequest(path, method, body) {
 	});
 }
 
-module.exports = { frameRequest, FRAME_CONTROL_URL };
+module.exports = { createFrameClient, DEFAULT_FRAME_CONTROL_URL };

@@ -42,7 +42,8 @@ object ConfigBackupClient {
     // unset/blank means there's nothing to restore from, same as a Pi
     // that's genuinely unreachable, so this returns null immediately
     // without spending the retry loop on it.
-    suspend fun fetchBackup(context: Context, path: String): JSONObject? = withContext(Dispatchers.IO) {
+    // retryDelayMs: only tests pass a shorter one.
+    suspend fun fetchBackup(context: Context, path: String, retryDelayMs: Long = RETRY_DELAY_MS): JSONObject? = withContext(Dispatchers.IO) {
         val piBaseUrl = ImmichSecretsStore.load(context)?.piBaseUrl
         if (piBaseUrl.isNullOrBlank()) return@withContext null
         for (attempt in 1..MAX_ATTEMPTS) {
@@ -55,7 +56,7 @@ object ConfigBackupClient {
                 }
             } catch (error: Exception) {
                 Log.w(TAG, "Pi backup fetch failed (attempt $attempt/$MAX_ATTEMPTS): $path", error)
-                if (attempt < MAX_ATTEMPTS) delay(RETRY_DELAY_MS)
+                if (attempt < MAX_ATTEMPTS) delay(retryDelayMs)
             }
         }
         null

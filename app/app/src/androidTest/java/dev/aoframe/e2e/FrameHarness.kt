@@ -16,8 +16,8 @@ import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * Test double for everything the frame talks to over HTTP: the Open-Meteo
- * forecast and marine endpoints and the local photo server. One
- * MockWebServer answers all three by path.
+ * forecast and marine endpoints, the local photo server and the webcam part
+ * of the video gate (pi-video-gate). One MockWebServer answers all by path.
  *
  * Never run these tests on the real frame: [reset] deletes the app's
  * stored settings and the launched app binds port 8099.
@@ -27,9 +27,26 @@ class FakeBackend {
     @Volatile var failForecastTimes = 0
     val forecastCalls = AtomicInteger()
 
+    /** The local photo server's list (GET /api/photos). */
+    @Volatile var photosJson = PHOTOS_JSON
+
+    /** The video gate's webcam on/off switch (GET /webcam/enabled). */
+    @Volatile var webcamEnabled = true
+    val webcamRefreshCalls = AtomicInteger()
+
     private val onePixelPng = Base64.getDecoder().decode(
         "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
     )
+
+    /** A 4x2 landscape PNG: on the portrait panel it gets the blurred backdrop. */
+    private val widePng = Base64.getDecoder().decode(
+        "iVBORw0KGgoAAAANSUhEUgAAAAQAAAACCAIAAADwyuo0AAAAEElEQVR4nGNocFCAIwZkDgBeGgcBzSxwNQAAAABJRU5ErkJggg=="
+    )
+
+    /** A 1 s, 96x64 H.264 clip from the test APK's assets (made with ffmpeg's testsrc). */
+    private val clipBytes: ByteArray by lazy {
+        InstrumentationRegistry.getInstrumentation().context.assets.open("e2e-clip.mp4").use { it.readBytes() }
+    }
 
     val server = MockWebServer().apply {
         dispatcher = object : Dispatcher() {
@@ -38,7 +55,17 @@ class FakeBackend {
                 return when {
                     path.startsWith("/v1/forecast") -> forecast()
                     path.startsWith("/v1/marine") -> json(MARINE_JSON)
-                    path == "/api/photos" -> json(PHOTOS_JSON)
+                    path == "/api/photos" -> json(photosJson)
+                    path == "/api/photos/$CLIP_ID" ->
+                        MockResponse().setHeader("Content-Type", "video/mp4").setBody(okio.Buffer().write(clipBytes))
+                    path == "/api/photos/$WIDE_ID" ->
+                        MockResponse().setHeader("Content-Type", "image/png").setBody(okio.Buffer().write(widePng))
+                    path == "/webcam/enabled" -> json("""{"enabled":$webcamEnabled}""")
+                    path == "/webcam/clips" -> json(if (webcamEnabled) """{"clips":["$WEBCAM_ID"]}""" else """{"clips":[]}""")
+                    path == "/webcam/clip/$WEBCAM_ID" ->
+                        MockResponse().setHeader("Content-Type", "video/mp4").setBody(okio.Buffer().write(clipBytes))
+                    path == "/webcam/refresh" -> { webcamRefreshCalls.incrementAndGet(); json("""{"status":"started"}""") }
+                    path == "/webcam/status" -> json("""{"enabled":$webcamEnabled,"cycleInProgress":false,"cameras":[]}""")
                     path.startsWith("/api/photos/") ->
                         MockResponse().setHeader("Content-Type", "image/png")
                             .setBody(okio.Buffer().write(onePixelPng))
@@ -65,6 +92,11 @@ class FakeBackend {
 
     companion object {
         const val PHOTOS_JSON = """[{"id":"p1","mimeType":"image/png"},{"id":"p2","mimeType":"image/png"}]"""
+        const val CLIP_ID = "clip"
+        const val WEBCAM_ID = "harbor"
+        const val WIDE_ID = "wide"
+        const val VIDEO_AND_WIDE_PHOTO_JSON =
+            """[{"id":"$CLIP_ID","mimeType":"video/mp4"},{"id":"$WIDE_ID","mimeType":"image/png"}]"""
         const val MARINE_JSON = """{"current":{"sea_surface_temperature":17.6}}"""
         const val FORECAST_JSON = """{
           "current":{"temperature_2m":21.4,"apparent_temperature":19.6,"precipitation_probability":35,"weather_code":1},
@@ -80,6 +112,7 @@ class FrameConfig(private val baseUrl: String) {
     var retrySeconds = 1L
     var photos = true
     var liveViewUrl: String? = null
+    var videoGate = false
 
     fun toJson(): String = JSONObject().apply {
         put("locale", "en")
@@ -99,6 +132,7 @@ class FrameConfig(private val baseUrl: String) {
             }
         }
         liveViewUrl?.let { put("liveViewUrl", it) }
+        if (videoGate) put("videoGateBaseUrl", baseUrl)
     }.toString()
 }
 
@@ -110,6 +144,11 @@ object FrameState {
         context.filesDir.listFiles()?.filter { it.isFile }?.forEach { it.delete() }
         context.deleteDatabase("asset-cache.db")
         assetCacheDir(context).deleteRecursively()
+    }
+
+    /** Stores the slide time before the app starts (the app allows 1 s at least). */
+    fun writeSlideDuration(ms: Long) {
+        File(context.filesDir, "slideshow-settings.json").writeText(JSONObject().put("durationMs", ms).toString())
     }
 
     fun writeConfig(config: FrameConfig) {

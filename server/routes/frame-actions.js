@@ -6,9 +6,9 @@
  * thin remote-editing/dashboard convenience on top.
  */
 const express = require("express");
-const { frameRequest } = require("../lib/frameClient");
 
-module.exports = function registerFrameActionRoutes(app) {
+// frameRequest(path, method, body) comes from lib/frameClient.js createFrameClient().
+module.exports = function registerFrameActionRoutes(app, frameRequest) {
 	const json = express.json();
 
 	// Config-style actions: GET returns current config, POST saves + echoes it back.

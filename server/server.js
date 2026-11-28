@@ -12,23 +12,36 @@
  * LAN-only via lib/ipWhitelist.js - see that file and the setup docs for
  * why this has no authentication of its own.
  */
+const path = require("path");
 const express = require("express");
-const ipWhitelist = require("./lib/ipWhitelist");
+const { createIpWhitelist } = require("./lib/ipWhitelist");
+const { createFrameClient } = require("./lib/frameClient");
 const registerDashboardRoutes = require("./routes/dashboard");
 const registerFrameActionRoutes = require("./routes/frame-actions");
 const registerPhotoRoutes = require("./routes/photos");
 
-const config = require("./config.json");
-const PORT = config.port || 8080;
+// createApp(config, deps): the whole server without listening. deps may replace
+// frameRequest and transcode (tests use a fake frame server and a fake ffmpeg).
+function createApp(config, deps = {}) {
+	const app = express();
+	app.use(createIpWhitelist(config.ipWhitelist));
+	app.use(express.json());
 
-const app = express();
-app.use(ipWhitelist);
-app.use(express.json());
+	registerDashboardRoutes(app);
+	registerFrameActionRoutes(app, deps.frameRequest || createFrameClient(config.frameControlUrl));
+	registerPhotoRoutes(app, {
+		storageDir: path.resolve(__dirname, config.photoStorageDir || "./photos"),
+		transcode: deps.transcode
+	});
+	return app;
+}
 
-registerDashboardRoutes(app);
-registerFrameActionRoutes(app);
-registerPhotoRoutes(app);
+if (require.main === module) {
+	const config = require("./config.json");
+	const PORT = config.port || 8080;
+	createApp(config).listen(PORT, "0.0.0.0", () => {
+		console.log(`AOFrame server listening on :${PORT}`);
+	});
+}
 
-app.listen(PORT, "0.0.0.0", () => {
-	console.log(`AOFrame server listening on :${PORT}`);
-});
+module.exports = { createApp };

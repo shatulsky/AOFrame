@@ -42,7 +42,7 @@ The script:
 2. Pings the gateway every 30 seconds, and logs each roam (`roam: BSSID a -> b`).
 3. Does nothing if Wi-Fi is off in Android, or if the gateway answers.
 4. Screen awake and 180 seconds of failed pings: `svc wifi disable`, 3 seconds, `svc wifi enable`, then waits up to 30 seconds for the gateway. At most 3 times per hour (`/data/local/tmp/wifi-watchdog.restarts`), so a real outage causes no restart loop.
-5. Screen awake and `PREFERRED_BSSID` set, and the frame is on another BSSID: the same restart, with its own limit of 2 per hour (`/data/local/tmp/wifi-watchdog.wrongunit`). If the preferred access point is down, the frame stays on the other one and the limit stops a loop.
+5. Screen awake and `PREFERRED_BSSID` set, and the frame is on another BSSID: the same restart, with its own limit of 2 per hour (`/data/local/tmp/wifi-watchdog.wrongunit`). If the preferred access point is down, the frame stays on the other one and the limit stops a loop. When this limit is reached, the checks of steps 3 and 4 still run, so a stall on the other access point still gets its restart. A BSSID of all zeros means no link and is not an access point.
 6. Screen asleep and 2 failed pings in a row (about 60 seconds): a dark wake.
    1. Saves `screen_brightness` to `/data/local/tmp/wifi-watchdog.brightness`, then sets it to `1`.
    2. Wakes the screen (`KEYCODE_WAKEUP`).
@@ -52,6 +52,8 @@ The script:
 7. Waits 270 seconds after a dark wake, then tries again if the frame is still offline.
 
 The script skips the dark wake from 3 minutes before until 2 minutes after the night-mode wake time. It reads that time from `/data/data/dev.aoframe/files/night-mode.json`. Without this, the app's own wake could fire during a dark wake, and the script would put the screen back to sleep for the whole day.
+
+The loop calls `check_once` every 30 seconds. The tests in `../test/frame-scripts.test.js` source the script with `WATCHDOG_SOURCE_ONLY=1` and call `check_once` with stub commands; the file paths can come from environment variables, which the init service does not set.
 
 The log is `/data/local/tmp/wifi-watchdog.log`. A new log starts at 64 KB (the old one becomes `wifi-watchdog.log.old`).
 

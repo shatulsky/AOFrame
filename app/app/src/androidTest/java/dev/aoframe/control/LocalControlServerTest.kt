@@ -99,9 +99,47 @@ class LocalControlServerTest {
         assertEquals(404, get("/action/does-not-exist").code)
     }
 
+    private fun call(method: String, path: String) = http.newCall(
+        Request.Builder().url(baseUrl + path)
+            .method(method, if (method == "GET") null else "{}".toRequestBody(JSON)).build()
+    ).execute()
+
     @Test
-    fun postOnlyRoutesReject405ForGet() {
-        assertEquals(405, get("/action/refresh-cache").code)
+    fun everyRouteRejectsAMethodItDoesNotHaveWith405() {
+        val postOnly = listOf("/action/refresh-cache", "/action/reset-faces", "/action/reshuffle", "/action/immich-webhook", "/action/refresh-webcam")
+        val getOnly = listOf("/status", "/action/webcam-sync-status")
+        val getAndPost = listOf("/action/night-mode", "/action/countdown", "/action/slideshow-settings", "/action/webcam-test-mode", "/action/live-view")
+        val wrong = postOnly.map { "GET" to it } + getOnly.map { "POST" to it } + getAndPost.map { "PUT" to it }
+        for ((method, path) in wrong) {
+            call(method, path).use { assertEquals("$method $path", 405, it.code) }
+        }
+        assertEquals("no callback runs on a refused request", 0, refreshCacheCalls.get() + resetFacesCalls.get() + reshuffleCalls.get() + immichWebhookCalls.get() + refreshWebcamCalls.get())
+        assertTrue(liveViewRequests.isEmpty())
+    }
+
+    @Test
+    fun aBodyTheRouteDoesNotReadDoesNotBreakTheNextRequestOnTheSameConnection() {
+        // OkHttp keeps the connection alive between these calls, as the
+        // admin panels' HTTP clients do. Leftover body bytes must not be
+        // read as the start of the next request.
+        post("/action/reshuffle", """{"from":"a panel that always sends JSON"}""").use { assertEquals(200, it.code) }
+        get("/status").use { assertEquals(200, it.code) }
+        post("/status", "{}").use { assertEquals(405, it.code) }
+        get("/action/night-mode").use { assertEquals(200, it.code) }
+    }
+
+    @Test
+    fun aBodyThatIsNotJsonAnswers500AndSavesNothing() {
+        post("/action/night-mode", "{not json").use { assertEquals(500, it.code) }
+        assertFalse(File(context.filesDir, "night-mode.json").exists())
+    }
+
+    @Test
+    fun slideshowSettingsAndWebcamTestModeGetReturnTheStoredValues() {
+        post("/action/slideshow-settings", """{"durationMs":9000,"endZoom":1.3}""").close()
+        get("/action/slideshow-settings").use { assertEquals(9000L, JSONObject(it.body!!.string()).getLong("durationMs")) }
+        post("/action/webcam-test-mode", """{"enabled":true}""").close()
+        get("/action/webcam-test-mode").use { assertTrue(JSONObject(it.body!!.string()).getBoolean("enabled")) }
     }
 
     @Test
